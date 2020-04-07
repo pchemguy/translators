@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-07 15:27:10"
+	"lastUpdated": "2020-04-07 18:36:02"
 }
 
 /*
@@ -37,42 +37,63 @@
 
 
 function detectWeb(doc, url) {
-	Z.debug('----------------------------------');
-	Z.debug('URL: ' + url);
-	Z.debug('.documentURI: ' + doc.documentURI);
-	Z.debug('\n' + '.cookie:\t\t\t\t\t' + doc.cookie + '\n');
+	const marc_table_div_selector = 'div#marc-rec > table';
+	let irow = 0;
 
-	Z.debug('\n' +
-	        'Expected:\t\t\t\thttps://search.rsl.ru/ru/record/01004623867' + '\n' +
-	        '.documentURI:\t\t\t' + doc.documentURI + '\n' +
-	        '.URL:\t\t\t\t\t' + doc.URL + '\n'
-	        );
+	let marc21_table_rows = doc.querySelector(marc_table_div_selector).rows;
+	let marcxml_lines = [];
+
+	marcxml_lines.push(
+		'<?xml version="1.0" encoding="UTF-8"?>',
+		'<record xmlns="http://www.loc.gov/MARC21/slim" type="Bibliographic">',
+		'    <leader>' + marc21_table_rows[0].cells[1].innerText.replace(/#/g, ' ') + '</leader>'
+	);
+	irow++;
 	
-	Z.debug('\n' +
-	        'Expected:\t\t\t\tsearch.rsl.ru' + '\n' +
-	        '.domain:\t\t\t\t\t' + doc.domain + '\n');
-	
-	let marc_table_div_id = 'marc-rec';
-	Z.debug('\n' +
-	        'Expected:\t\t\t\trsl-marc-record' + '\n' +
-	        '.getElementById:\t\t\t' + doc.getElementById(marc_table_div_id).getAttribute("class") + '\n');
-
-	let marc_table_div_class = 'rsl-marc-record';
-	Z.debug(doc.getElementsByClassName(marc_table_div_class)[0].getAttribute("id"));
-	Z.debug('\n' +
-	        'Expected:\t\t\t\tmarc-rec' + '\n' +
-	        '.getElementsByClassName:\t' + doc.getElementsByClassName(marc_table_div_class)[0].getAttribute("id") + '\n');
-
-
-	Z.debug('----------------------------------');
-	if (url.indexOf("/search#q") != -1) {
-		return "multiple";
-	} else if (url.indexOf("/record/") != -1) {
-		return getDocType(doc);
+	for (irow; irow < marc21_table_rows.length; irow++) {
+		let cur_cells = marc21_table_rows[irow].cells;
+		let field_tag = cur_cells[0].innerText;
+		if (Number(field_tag) > 8) { break; }
+		let field_val = cur_cells[1].innerText;
+		marcxml_lines.push(
+			'    <controlfield tag="' + field_tag + '">' + field_val.replace(/#/g, ' ') + '</controlfield>'
+		);
 	}
+	
+	for (irow; irow < marc21_table_rows.length; irow++) {
+		let cur_cells = marc21_table_rows[irow].cells;
+		let field_tag = cur_cells[0].innerText;
+		cur_cells[1].innerHTML = cur_cells[1].innerHTML.replace(/>\$/g, '>$$$$$$');
+		field_val = cur_cells[1].innerText;
+		cur_cells[1].innerHTML = cur_cells[1].innerHTML.replace(/\$\$\$/g, '$$');
+		let inds = field_val.slice(0, 2).replace(/#/g, ' ');
+		field_val = field_val.slice(5);
+		let subfields = field_val.split('$$$');
+		marcxml_lines.push(
+			'    <datafield tag="' + field_tag + '" ind1="' + inds[0] + '" ind2="' + inds[1] + '">'
+		);
+		for (let isubfield = 0; isubfield < subfields.length; isubfield++) {
+			subfield = subfields[isubfield].replace(/\s/, '\x01').split('\x01');
+			marcxml_lines.push(
+				'        <subfield code="' + subfield[0] + '">' + subfield[1] + '</subfield>'
+			);
+		}
+		marcxml_lines.push(
+			'    </datafield>'
+		);
+	}
+
+	marcxml_lines.push(
+		'</record>'
+	);
+	
+	Z.debug('\n' + marcxml_lines.join('\n'));
+	//Z.debug(marc21_table_rows[4].cells[1]);
 	return false;
 }
 
-function getDocType(doc, url) {
-	return "journalArticle";
-}
+
+//      <subfield code="a">16,A43</subfield>
+//      <subfield code="z">16,N35</subfield>
+//      <subfield code="2">dnb</subfield>
+
