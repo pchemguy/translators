@@ -1,6 +1,6 @@
 {
 	"translatorID": "26ce1cb2-07ec-4d0e-9975-ce2ab35c8343",
-	"label": "a  Russian State Library RSL.ru",
+	"label": "a a test1.ru",
 	"creator": "PChemGuy",
 	"target": "^https://search\\.rsl\\.ru",
 	"minVersion": "3.0",
@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-07 14:33:01"
+	"lastUpdated": "2020-04-07 15:26:28"
 }
 
 /*
