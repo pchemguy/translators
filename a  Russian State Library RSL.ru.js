@@ -1,5 +1,5 @@
 {
-	"translatorID": "26ce1cb2-07ec-4d0e-9975-ce2ab35c8343",
+	"translatorID": "",
 	"label": "a  Russian State Library RSL.ru",
 	"creator": "PChemGuy",
 	"target": "^https://search\\.rsl\\.ru",

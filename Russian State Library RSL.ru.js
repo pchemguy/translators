@@ -1,6 +1,6 @@
 {
-	"translatorID": "",
-	"label": "a a test2.ru",
+	"translatorID": "26ce1cb2-07ec-4d0e-9975-ce2ab35c8343",
+	"label": "a a Russian State Library RSL.ru",
 	"creator": "PChemGuy",
 	"target": "^https://search\\.rsl\\.ru/",
 	"minVersion": "3.0",
@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-08 09:53:29"
+	"lastUpdated": "2020-04-08 10:13:15"
 }
 
 /*
@@ -89,9 +89,9 @@ function scrape(doc, url) {
 
 function scrape_callback(doc, url) {
 	function callback(obj, item) {
+		Zotero.debug("item");
 		item.complete();
 	}
-	
 	return callback;
 }
 
