@@ -2,14 +2,14 @@
 	"translatorID": "26ce1cb2-07ec-4d0e-9975-ce2ab35c8343",
 	"label": "a a Russian State Library RSL.ru",
 	"creator": "PChemGuy",
-	"target": "^https://search\\.rsl\\.ru/",
+	"target": "^https?://(search|aleph)\\.rsl\\.ru/",
 	"minVersion": "3.0",
 	"maxVersion": "",
 	"priority": 100,
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-08 18:57:55"
+	"lastUpdated": "2020-04-08 21:04:41"
 }
 
 /*
@@ -48,35 +48,75 @@ function text(docOrElem, selector, index) {
 }
 
 
+/*
+  Scaffold issue (date detected: April 2020):
+  When detectWeb is run via
+    "Ctrl/Cmd-T", "doc" receives "object HTMLDocument";
+    "Run test", "doc" receives JS object
+*/
 function detectWeb(doc, url) {
-	// Zotero.debug(url);
-	
-	if (url.indexOf("/search#q=") != -1) {
-		return "multiple";
-	} else if (url.indexOf("/record/") != -1) {
-		return "book";
+			Z.debug(doc);
+	let subdomain = doc.domain.slice(0, -'.rsl.ru'.length);
+	Z.debug(subdomain);
+	switch(subdomain) {
+		case 'search':
+			if (url.indexOf("/search#q=") != -1) {
+				return "multiple";
+			} else if (url.indexOf("/record/") != -1) {
+				return "book";
+			} else {
+				Z.debug('Catalog section not supported');
+				return false;
+			}
+	    	break;
+		case 'aleph':
+			if (url.match(/func=(find-[abcm]|basket-short|(history|short)-action)/)) {
+				return "multiple";
+			} else if (url.indexOf("func=full-set-set") != -1) {
+				return "book";
+			} else {
+				Z.debug('Catalog section not supported');
+				return false;
+			}
+	    	break;
+		default:
+			Z.debug('Subdomain not supported');
+			return false;
 	}
-	return false;
 }
 
 
+/*
+  TODO: '(detectWeb(doc, url) == "multiple"' section a template/placeholder!
+		Search results processing is not yet implemented.
+*/
 function doWeb(doc, url) {
-	if (detectWeb(doc, url) == "multiple") {
-		Zotero.selectItems(getSearchResults(doc, false),
-						function (items) {
-							if (items) ZU.processDocuments(Object.keys(items), scrape);
-						}
-		);
-	}
-	else {
+	if (detectWeb(doc, url) != "multiple") {
 		scrape(doc, url);
+	} else {
+		Zotero.selectItems(getSearchResults(doc, false),
+			function (items) {
+				if (items) ZU.processDocuments(Object.keys(items), scrape);
+			}
+		);
 	}
 }
 
 
 function scrape(doc, url) {
 	// Convert HTML table of MARC record to MARCXML
-	let record_marcxml = getMARCXML(doc, url);
+	let record_marcxml;
+	let subdomain = doc.domain.slice(0, -'.rsl.ru'.length);
+	switch(subdomain) {
+		case 'search':
+			record_marcxml = getMARCXML_search_rsl_ru(doc, url);
+	    	break;
+		case 'aleph':
+	    	break;
+		default:
+			Z.debug('Subdomain not supported');
+			return false;
+	}
 	Z.debug('\n' + record_marcxml);
 	
 	// call MARCXML translator
@@ -88,6 +128,7 @@ function scrape(doc, url) {
 }
 
 
+// Additional processing after the MARCXML translator
 function scrape_callback(doc, url) {
 	function callback(obj, item) {
 		Zotero.debug("item");
@@ -96,64 +137,11 @@ function scrape_callback(doc, url) {
 	return callback;
 }
 
+
 /*
-function(obj, item) {
-	// scrape abstract from page
-	item.abstractNote = ZU.trimInternal(cleanMath(
-		ZU.xpathText(doc, '//section[contains(@class,"abstract")]/div[@class="content"]/p[1]')
-	));
-	
-	// attach PDF
-	if (ZU.xpath(doc, '//div[@class="article-nav-actions"]/a[contains(text(), "PDF")]').length) {
-		item.attachments.push({
-			title: 'Full Text PDF',
-			url: url.replace('{REPLACE}', 'pdf'),
-			mimeType: 'application/pdf'
-		});
-	}
-	
-	item.attachments.push({
-		title: "APS Snapshot",
-		document: doc
-	});
-	
-	if (Z.getHiddenPref && Z.getHiddenPref('attachSupplementary')) {
-		ZU.processDocuments(url.replace('{REPLACE}', 'supplemental'), function(doc) {
-			try {
-				var asLink = Z.getHiddenPref('supplementaryAsLink');
-				var suppFiles = doc.getElementsByClassName('supplemental-file');
-				for (var i=0; i<suppFiles.length; i++) {
-					var link = suppFiles[i].getElementsByTagName('a')[0];
-					if (!link || !link.href) continue;
-					var title = link.getAttribute('data-id') || 'Supplementary Data';
-					var type = suppTypeMap[link.href.split('.').pop()];
-					if (asLink || dontDownload.indexOf(type) != -1) {
-						item.attachments.push({
-							title: title,
-							url: link.href,
-							mimeType: type || 'text/html',
-							snapshot: false
-						});
-					} else {
-						item.attachments.push({
-							title: title,
-							url: link.href,
-							mimeType: type
-						});
-					}
-				}
-			} catch (e) {
-				Z.debug('Could not attach supplemental data');
-				Z.debug(e);
-			}
-		}, function() { item.complete() });
-	} else {
-		item.complete();
-	}
-}
+  TODO: This is a template/placeholder!
+		Search results processing is not yet implemented.
 */
-
-
 function getSearchResults(doc, checkOnly) {
 	var items = {};
 	var found = false;
@@ -173,7 +161,7 @@ function getSearchResults(doc, checkOnly) {
 }
 
 
-function getMARCXML(doc, url) {
+function getMARCXML_search_rsl_ru(doc, url) {
 	// var marc_rows = doc.querySelectorAll('div#marc-rec > table > tbody > tr'); 
 	// Zotero.debug(text(marc_rows[0], 'td', 1));
 
