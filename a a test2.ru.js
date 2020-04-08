@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-07 18:36:02"
+	"lastUpdated": "2020-04-08 07:08:12"
 }
 
 /*
@@ -36,7 +36,66 @@
 */
 
 
+function attr(docOrElem, selector, attr, index) {
+	var elem = index ? docOrElem.querySelectorAll(selector).item(index) : docOrElem.querySelector(selector);
+	return elem ? elem.getAttribute(attr) : null;
+}
+
+
+function text(docOrElem, selector, index) {
+	var elem = index ? docOrElem.querySelectorAll(selector).item(index) : docOrElem.querySelector(selector);
+	return elem ? elem.textContent : null;
+}
+
+
 function detectWeb(doc, url) {
+	Zotero.debug(url);
+	var marc_rows = doc.querySelectorAll('div#marc-rec > table > tbody > tr'); 
+	Zotero.debug(text(marc_rows[7], 'td', 1));
+	
+	if (url.indexOf("/search#q=") != -1) {
+		return "multiple";
+	} else if (url.indexOf("/record/") != -1) {
+		return "book";
+	}
+	return false;
+}
+
+
+function doWeb(doc, url) {
+	if (detectWeb(doc, url) == "multiple") {
+		Zotero.selectItems(getSearchResults(doc, false),
+						function (items) {
+							if (items) ZU.processDocuments(Object.keys(items), scrape);
+						}
+		);
+	}
+	else {
+		scrape(doc, url);
+	}
+}
+
+
+function getSearchResults(doc, checkOnly) {
+	var items = {};
+	var found = false;
+	// TODO: adjust the CSS selector
+	var rows = doc.querySelectorAll('h2>a.title[href*="/article/"]');
+	for (let row of rows) {
+		// TODO: check and maybe adjust
+		let href = row.href;
+		// TODO: check and maybe adjust
+		let title = ZU.trimInternal(row.textContent);
+		if (!href || !title) continue;
+		if (checkOnly) return true;
+		found = true;
+		items[href] = title;
+	}
+	return found ? items : false;
+}
+
+
+function getMARCXML(doc, url) {
 	const marc_table_div_selector = 'div#marc-rec > table';
 	let irow = 0;
 
@@ -87,13 +146,5 @@ function detectWeb(doc, url) {
 		'</record>'
 	);
 	
-	Z.debug('\n' + marcxml_lines.join('\n'));
-	//Z.debug(marc21_table_rows[4].cells[1]);
-	return false;
+	return marcxml_lines.join('\n');
 }
-
-
-//      <subfield code="a">16,A43</subfield>
-//      <subfield code="z">16,N35</subfield>
-//      <subfield code="2">dnb</subfield>
-
