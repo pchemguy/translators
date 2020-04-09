@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-08 21:04:41"
+	"lastUpdated": "2020-04-09 21:42:56"
 }
 
 /*
@@ -35,6 +35,76 @@
 	***** END LICENSE BLOCK *****
 */
 
+/*
+	Testing/troubleshooting issues in Scaffold (valid as of April 2020):
+	Care must be taken when loading an additional translator as a preprocessor.
+	setTranslator does not:
+		- throw any errors when invalid translator id is supplied;
+		- provide any human readable feedback with translator name, so
+		  even if a valid translator id for a wrong translator is supplied,
+		  no immediate feedback is supplied.
+	In both cases "Translation successful" status is likely to be returned.
+	Working environment: Windows 7 x64
+*/
+
+/*
+	RSL has two primary catalog interfaces:
+		https://search.rsl.ru (sRSL)
+		http://aleph.rsl.ru (aRSL)
+	search.rsl.ru records can be accessed via search.rsl.ru/(ru|en)/record/<RID>
+	aleph.rsl.ru appears to be extremely buggy with no reliable way of directly
+	accessing individual records via record ID's (RID) (as of April 2020).
+	
+	search.rsl.ru/(ru|en)/download/marc21?id=<RID> interface provides access to 
+	binary MARC21 records, but requires prior authentication, so they are not used.
+	
+	Translator's logic for both catalogs involves parsing the web page into MARCXML,
+	loading MARCXML translator for initial processing, followed by postprocessing as
+	necessary.
+	
+	Postprocessing for search.rsl.ru aslo involves parsing of the human readable
+	description to harvest additional metadata.
+*/
+
+
+/*
+	Item type is adjusted based on the catalog information. Present implementation
+	assumes that each record belongs to a single catalog (it is not clear whether
+	this is correct or not.)
+	
+	Russian style thesis abstracts are more like manuscripts, but they are assigned
+	the "thesis" type, with additional type note added to the "Extra" field.
+	
+	At present, technical standards are commonly mapped to Zotero "report" due to
+	lack of a dedicated type. Such a type is expected to be implemented in the near
+	future, but	for the time being a type note is added to the "Extra" field.
+	
+	The following catalogs are supported. For items beloning to other catalogs no
+	type adjustment is made.
+*/
+const catalog2type = {
+	"Книги (изданные с 1831 г. по настоящее время)": "book",
+	"Старопечатные книги (изданные с 1450 по 1830 г.)": "book",
+	"Авторефераты диссертаций": "thesis abstract",
+	"Диссертации": "thesis",
+	"Стандарты": "standard"
+}
+
+const metadata_sRSL = {
+	marc_table_css: "div#marc-rec > table",
+	desc_table_css: "table.card-descr-table",
+	rid_prefix: "https://search.rsl.ru/ru/record/",
+	thesis_rel_attr: "href",
+	thesis_rel_prefix: "/ru/transition/",
+	thesis_rel_css: 'a[href^="/ru/transition/"]',
+	catalog: "Каталоги",
+	bbk: "BBK-код",
+	call_number: "Места хранения",
+	eresource: "Электронный адрес"
+}
+
+const base_eurl = 'https://dlib.rsl.ru/';
+
 
 function attr(docOrElem, selector, attr, index) {
 	var elem = index ? docOrElem.querySelectorAll(selector).item(index) : docOrElem.querySelector(selector);
@@ -49,36 +119,41 @@ function text(docOrElem, selector, index) {
 
 
 /*
-  Scaffold issue (date detected: April 2020):
-  When detectWeb is run via
-    "Ctrl/Cmd-T", "doc" receives "object HTMLDocument";
-    "Run test", "doc" receives JS object
+	Scaffold issue (valid as of April 2020):
+	When detectWeb is run via
+		- "Ctrl/Cmd-T", "doc" receives "object HTMLDocument";
+		- "Run test", "doc" receives JS object (not sure about details).
+	Both objects have doc.location.host defined.
+	Working environment: Windows 7 x64
 */
 function detectWeb(doc, url) {
-			Z.debug(doc);
-	let subdomain = doc.domain.slice(0, -'.rsl.ru'.length);
-	Z.debug(subdomain);
+	let domain = url.match(/^https?:\/\/([^/]*)/)[1];
+	let subdomain = domain.slice(0, -'.rsl.ru'.length);
+	//Z.debug(subdomain);
 	switch(subdomain) {
 		case 'search':
-			if (url.indexOf("/search#q=") != -1) {
-				return "multiple";
-			} else if (url.indexOf("/record/") != -1) {
-				return "book";
+			if (url.indexOf('/search#q=') != -1) {
+				return 'multiple';
+			} else if (url.indexOf('/record/') != -1) {
+				let metadata = getRecordDescription_sRSL(doc, url);
+				let itemType = metadata.itemType;
+				//Z.debug(metadata);
+				return itemType ? itemType : 'book';
 			} else {
 				Z.debug('Catalog section not supported');
 				return false;
 			}
-	    	break;
+			break;
 		case 'aleph':
 			if (url.match(/func=(find-[abcm]|basket-short|(history|short)-action)/)) {
-				return "multiple";
-			} else if (url.indexOf("func=full-set-set") != -1) {
-				return "book";
+				return 'multiple';
+			} else if (url.indexOf('func=full-set-set') != -1) {
+				return 'book';
 			} else {
 				Z.debug('Catalog section not supported');
 				return false;
 			}
-	    	break;
+			break;
 		default:
 			Z.debug('Subdomain not supported');
 			return false;
@@ -87,11 +162,18 @@ function detectWeb(doc, url) {
 
 
 /*
-  TODO: '(detectWeb(doc, url) == "multiple"' section a template/placeholder!
-		Search results processing is not yet implemented.
+	TODO: '(detectWeb(doc, url) == "multiple"' section a template/placeholder!
+		  Search results processing is not yet implemented.
+		
+	Scaffold issue (date detected: April 2020):
+	When detectWeb is run via
+		"Ctrl/Cmd-T", "doc" receives "object HTMLDocument";
+		"Run test", "doc" receives JS object (not sure about details).
+	Working environment: Windows 7 x64
 */
 function doWeb(doc, url) {
-	if (detectWeb(doc, url) != "multiple") {
+	// Zotero.debug(doc);
+	if (detectWeb(doc, url) != 'multiple') {
 		scrape(doc, url);
 	} else {
 		Zotero.selectItems(getSearchResults(doc, false),
@@ -106,32 +188,52 @@ function doWeb(doc, url) {
 function scrape(doc, url) {
 	// Convert HTML table of MARC record to MARCXML
 	let record_marcxml;
-	let subdomain = doc.domain.slice(0, -'.rsl.ru'.length);
+	let scrape_callback;
+	let domain = url.match(/^https?:\/\/([^/]*)/)[1];
+	let subdomain = domain.slice(0, -'.rsl.ru'.length);
 	switch(subdomain) {
 		case 'search':
-			record_marcxml = getMARCXML_search_rsl_ru(doc, url);
-	    	break;
+			record_marcxml = getMARCXML_sRSL(doc, url);
+			scrape_callback = scrape_callback_sRSL;
+			break;
 		case 'aleph':
-	    	break;
+			Z.debug('Subdomain not supported');
+			return false;
+			break;
 		default:
 			Z.debug('Subdomain not supported');
 			return false;
 	}
-	Z.debug('\n' + record_marcxml);
+	//Z.debug('\n' + record_marcxml);
 	
 	// call MARCXML translator
+	const MARCXML_tid = 'edd87d07-9194-42f8-b2ad-997c4c7deefd';
 	var trans = Zotero.loadTranslator('import');
-	trans.setTranslator('edd87d07-9194-42f8-b2ad-997c4c7deefd'); //MARCXML
+	trans.setTranslator(MARCXML_tid);
 	trans.setString(record_marcxml);
 	trans.setHandler('itemDone', scrape_callback(doc, url));
 	trans.translate();
 }
 
 
-// Additional processing after the MARCXML translator
-function scrape_callback(doc, url) {
+/*
+	Additional processing after the MARCXML translator for search.rsl.ru
+	Parse description table into a dictionary, pull and set
+		RSL record ID,
+		call numbers (semicolon separated),
+		catalog/item type,
+		BBK codes (semicolon separated),
+		electronic url, if available.
+*/
+function scrape_callback_sRSL(doc, url) {
 	function callback(obj, item) {
-		Zotero.debug("item");
+		//Zotero.debug(item);
+		let metadata = getRecordDescription_sRSL(doc, url);
+		//Z.debug(metadata);
+		if (metadata.itemType) {
+			item.itemType = metadata.itemType;
+		}
+		//Z.debug(item);
 		item.complete();
 	}
 	return callback;
@@ -139,8 +241,8 @@ function scrape_callback(doc, url) {
 
 
 /*
-  TODO: This is a template/placeholder!
-		Search results processing is not yet implemented.
+	TODO: This is a template/placeholder!
+		  Search results processing is not yet implemented.
 */
 function getSearchResults(doc, checkOnly) {
 	var items = {};
@@ -161,14 +263,13 @@ function getSearchResults(doc, checkOnly) {
 }
 
 
-function getMARCXML_search_rsl_ru(doc, url) {
+function getMARCXML_sRSL(doc, url) {
 	// var marc_rows = doc.querySelectorAll('div#marc-rec > table > tbody > tr'); 
 	// Zotero.debug(text(marc_rows[0], 'td', 1));
 
-	const marc_table_div_selector = 'div#marc-rec > table';
 	let irow = 0;
 
-	let marc21_table_rows = doc.querySelector(marc_table_div_selector).rows;
+	let marc21_table_rows = doc.querySelector(metadata_sRSL.marc_table_css).rows;
 	let marcxml_lines = [];
 
 	marcxml_lines.push(
@@ -199,7 +300,7 @@ function getMARCXML_search_rsl_ru(doc, url) {
 		  so triple all '$' that follow immediately after '>' before stripping HTML tags
 		  to prevent collisions with potential occurences of '$' as part of subfield contets. 
 		*/
-		cur_cells[1].innerHTML = cur_cells[1].innerHTML.replace(/>\$/g, '>$$$$$$');
+		cur_cells[1].innerHTML = cur_cells[1].innerHTML.replace(/\>\$/g, '>$$$$$$');
 		field_val = cur_cells[1].innerText;
 		let subfields = field_val.split('$$$');
 		cur_cells[1].innerHTML = cur_cells[1].innerHTML.replace(/\$\$\$/g, '$$');
@@ -230,6 +331,66 @@ function getMARCXML_search_rsl_ru(doc, url) {
 	
 	return marcxml_lines.join('\n');
 }
+
+
+function getRecordDescription_sRSL(doc, url) {
+		let irow = 0;
+		let metadata = {};
+		let property_name = '';
+		let property_value = '';
+		let desc_table_rows = doc.querySelector(metadata_sRSL.desc_table_css).rows;
+
+		for (irow = 0; irow < desc_table_rows.length; irow++) {
+			let cur_cells = desc_table_rows[irow].cells;
+			let buffer = cur_cells[0].innerText;
+			if (buffer) {
+				metadata[property_name] = property_value;
+				property_name = buffer;
+				property_value = cur_cells[1].innerText;
+			} else {
+				property_value = property_value + '; ' + cur_cells[1].innerText;
+			}
+		}
+		metadata[property_name] = property_value;
+		delete metadata[''];
+		
+		let type = catalog2type[metadata[metadata_sRSL.catalog]];
+		if (type) {
+			metadata.type = type;
+			metadata.itemType = type;
+		}
+		metadata.handle = url; 
+		metadata.rid_sRSL = url.slice(metadata_sRSL.rid_prefix.length);
+		if (metadata[metadata_sRSL.eresource]) {
+			metadata.erid_sRSL = base_eurl + metadata.rid_sRSL;
+		} 
+		if (type == 'thesis') {
+			let aurl = attr(doc, metadata_sRSL.thesis_rel_css, metadata_sRSL.thesis_rel_attr);
+			if (aurl) {
+				aurl = metadata_sRSL.rid_prefix + 
+					   aurl.slice(metadata_sRSL.thesis_rel_prefix.length + 
+								  metadata.rid_sRSL.length + '/'.length);
+				metadata.abstract_url = aurl;
+			}
+		}
+		if (type == 'thesis abstract') {
+			metadata.itemType = 'thesis';
+			let turl = attr(doc, metadata_sRSL.thesis_rel_css, metadata_sRSL.thesis_rel_attr);
+			if (turl) {
+				turl = metadata_sRSL.rid_prefix + 
+					   turl.slice(metadata_sRSL.thesis_rel_prefix.length + 
+								  metadata.rid_sRSL.length + '/'.length);
+				metadata.thesis_url = turl;
+			}
+		}
+		if (type == 'standard') {
+			metadata.itemType = 'report';
+		}
+		
+		return metadata;
+}
+
+
 /** BEGIN TEST CASES **/
 var testCases = [
 	{
@@ -271,7 +432,7 @@ var testCases = [
 		"url": "https://search.rsl.ru/ru/record/01007721928",
 		"items": [
 			{
-				"itemType": "book",
+				"itemType": "thesis",
 				"title": "Химия неорганических молекулярных комплексов в газовой фазе: Автореф. дис. на соиск. учен. степени д-ра хим. наук: (02.00.07)",
 				"creators": [
 					{
@@ -286,8 +447,8 @@ var testCases = [
 				"libraryCatalog": "a a Russian State Library RSL.ru",
 				"numPages": "32",
 				"place": "Ленинград",
-				"publisher": "б. и.",
 				"shortTitle": "Химия неорганических молекулярных комплексов в газовой фазе",
+				"university": "б. и.",
 				"attachments": [],
 				"tags": [],
 				"notes": [],
@@ -300,7 +461,7 @@ var testCases = [
 		"url": "https://search.rsl.ru/ru/record/01009512194",
 		"items": [
 			{
-				"itemType": "book",
+				"itemType": "thesis",
 				"title": "Химия неорганических молекулярных комплексов в газовой фазе: диссертация ... доктора химических наук: 02.00.01",
 				"creators": [
 					{
@@ -403,7 +564,7 @@ var testCases = [
 		"url": "https://search.rsl.ru/ru/record/01008704042",
 		"items": [
 			{
-				"itemType": "book",
+				"itemType": "thesis",
 				"title": "Комплексообразование серебра (I) с 1,2,4-триазолом и 1,2,4-триазолтиолом: автореферат дис. ... кандидата химических наук: [специальность] 02.00.01 Неорганическая химия",
 				"creators": [
 					{
@@ -434,7 +595,7 @@ var testCases = [
 		"url": "https://search.rsl.ru/ru/record/01010006646",
 		"items": [
 			{
-				"itemType": "book",
+				"itemType": "thesis",
 				"title": "Комплексообразование серебра (I) с 1,2,4-триазолом и 1,2,4-триазолтиолом: диссертация ... кандидата химических наук: 02.00.01",
 				"creators": [
 					{
@@ -465,16 +626,15 @@ var testCases = [
 		"url": "https://search.rsl.ru/ru/record/01008942252",
 		"items": [
 			{
-				"itemType": "book",
+				"itemType": "report",
 				"title": "Товары бытовой химии. Метод определения щелочных компонентов: Goods of household chemistry. Method for determination of alkaline components: государственный стандарт Российской Федерации: издание официальное: утвержден и введен в действие Постановлением Госстандарта России от 29 января 1997 г. № 26: введен впервые: введен 1998-01-01",
 				"creators": [],
 				"date": "1997",
 				"callNumber": "661.185.6.001.4:006.354",
+				"institution": "Изд-во стандартов",
 				"language": "rus",
 				"libraryCatalog": "a a Russian State Library RSL.ru",
-				"numPages": "12",
 				"place": "Москва",
-				"publisher": "Изд-во стандартов",
 				"shortTitle": "Товары бытовой химии. Метод определения щелочных компонентов",
 				"attachments": [],
 				"tags": [],
@@ -542,16 +702,16 @@ var testCases = [
 		"url": "https://search.rsl.ru/ru/record/01002792532",
 		"items": [
 			{
-				"itemType": "bookSection",
+				"itemType": "book",
 				"title": "Физическая химия",
 				"creators": [],
 				"date": "2005",
 				"ISBN": "9785812208066",
 				"abstractNote": "Учебное пособие предназначено для студентов, аспирантов, научных и инженерно-технических работников, преподавателей ВУЗов и техникумов",
-				"bookTitle": "Физическая и коллоидная химия : учеб",
 				"callNumber": "541.1: 664.002.2 (075.8)",
 				"language": "rus",
 				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"numPages": "282",
 				"place": "М.",
 				"publisher": "Моск. гос. ун-т печати",
 				"attachments": [],
