@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-10 15:52:51"
+	"lastUpdated": "2020-04-10 16:08:19"
 }
 
 /*
@@ -263,7 +263,7 @@ function scrape_callback_sRSL(doc, url) {
 	function callback(obj, item) {
 		//Zotero.debug(item);
 		let metadata = getRecordDescription_sRSL(doc, url);
-		Z.debug(metadata);
+		//Z.debug(metadata);
 		if (metadata.itemType) {
 			item.itemType = metadata.itemType;
 		}
@@ -284,10 +284,10 @@ function scrape_callback_sRSL(doc, url) {
 		}
 		item.extra = extra.join('\n');
 		
-		Z.debug(item.attachments[0]);
+		//Z.debug(item.attachments[0]);
 		metadata.related_url.forEach(link => addLink(item, link.title, link.url));
 		
-		Z.debug(item);
+		//Z.debug(item);
 		item.complete();
 	}
 	return callback;
@@ -530,8 +530,10 @@ var testCases = [
 				"url": "https://search.rsl.ru/ru/record/01007721928",
 				"attachments": [
 					{
+						"linkMode": "linked_url",
+						"title": "Thesis RSL record",
 						"snapshot": false,
-						"mimeType": "text/html"
+						"contentType": "text/html"
 					}
 				],
 				"tags": [],
@@ -566,8 +568,10 @@ var testCases = [
 				"url": "https://search.rsl.ru/ru/record/01009512194",
 				"attachments": [
 					{
+						"linkMode": "linked_url",
+						"title": "Autoreferat RSL record",
 						"snapshot": false,
-						"mimeType": "text/html"
+						"contentType": "text/html"
 					}
 				],
 				"tags": [
@@ -683,12 +687,16 @@ var testCases = [
 				"url": "https://search.rsl.ru/ru/record/01008704042",
 				"attachments": [
 					{
+						"linkMode": "linked_url",
+						"title": "E-resource",
 						"snapshot": false,
-						"mimeType": "text/html"
+						"contentType": "text/html"
 					},
 					{
+						"linkMode": "linked_url",
+						"title": "Thesis RSL record",
 						"snapshot": false,
-						"mimeType": "text/html"
+						"contentType": "text/html"
 					}
 				],
 				"tags": [
@@ -727,12 +735,16 @@ var testCases = [
 				"url": "https://search.rsl.ru/ru/record/01010006646",
 				"attachments": [
 					{
+						"linkMode": "linked_url",
+						"title": "E-resource",
 						"snapshot": false,
-						"mimeType": "text/html"
+						"contentType": "text/html"
 					},
 					{
+						"linkMode": "linked_url",
+						"title": "Autoreferat RSL record",
 						"snapshot": false,
-						"mimeType": "text/html"
+						"contentType": "text/html"
 					}
 				],
 				"tags": [
@@ -765,8 +777,10 @@ var testCases = [
 				"url": "https://search.rsl.ru/ru/record/01008942252",
 				"attachments": [
 					{
+						"linkMode": "linked_url",
+						"title": "E-resource",
 						"snapshot": false,
-						"mimeType": "text/html"
+						"contentType": "text/html"
 					}
 				],
 				"tags": [],
@@ -891,8 +905,10 @@ var testCases = [
 				"url": "https://search.rsl.ru/ru/record/01004080147",
 				"attachments": [
 					{
+						"linkMode": "linked_url",
+						"title": "E-resource",
 						"snapshot": false,
-						"mimeType": "text/html"
+						"contentType": "text/html"
 					}
 				],
 				"tags": [
@@ -1216,12 +1232,16 @@ var testCases = [
 				"url": "https://search.rsl.ru/ru/record/01000287561",
 				"attachments": [
 					{
+						"linkMode": "linked_url",
+						"title": "E-resource",
 						"snapshot": false,
-						"mimeType": "text/html"
+						"contentType": "text/html"
 					},
 					{
+						"linkMode": "linked_url",
+						"title": "Thesis RSL record",
 						"snapshot": false,
-						"mimeType": "text/html"
+						"contentType": "text/html"
 					}
 				],
 				"tags": [
