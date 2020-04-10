@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-09 21:42:56"
+	"lastUpdated": "2020-04-10 15:52:51"
 }
 
 /*
@@ -85,15 +85,16 @@
 const catalog2type = {
 	"Книги (изданные с 1831 г. по настоящее время)": "book",
 	"Старопечатные книги (изданные с 1450 по 1830 г.)": "book",
-	"Авторефераты диссертаций": "thesis abstract",
+	"Авторефераты диссертаций": "thesisAutoreferat",
 	"Диссертации": "thesis",
 	"Стандарты": "standard"
 }
 
 const metadata_sRSL = {
+	libraryCatalog: "Российская Государственная Библиотека",
 	marc_table_css: "div#marc-rec > table",
 	desc_table_css: "table.card-descr-table",
-	rid_prefix: "https://search.rsl.ru/ru/record/",
+	rslid_prefix: "https://search.rsl.ru/ru/record/",
 	thesis_rel_attr: "href",
 	thesis_rel_prefix: "/ru/transition/",
 	thesis_rel_css: 'a[href^="/ru/transition/"]',
@@ -115,6 +116,39 @@ function attr(docOrElem, selector, attr, index) {
 function text(docOrElem, selector, index) {
 	var elem = index ? docOrElem.querySelectorAll(selector).item(index) : docOrElem.querySelector(selector);
 	return elem ? elem.textContent : null;
+}
+
+
+/**
+ *	Adds link attachment to a Zotero item.
+ *
+ *  There is a bug in Zotero the routine that creates attachments from JSON 
+ *  definitions. "linkMode" property affects (determines?) the type of the new 
+ *  attachment and interpretation of the remaining properties. The routine 
+ *  apparently enumerates keys, instead of accessing "linkMode" directly. It 
+ *  processes properties in the order supplied, and if "linkMode" does not come 
+ *  first, may not process earlier properties correctly. This is particularly 
+ *  problematic, since there is no guaranteed order of members in a dictionary, 
+ *  though, apparently, in simple cases at least the members are returned in the
+ *  "added first" order. However, this behavior is not relaibly reproducible.
+ *  Windows 7 x64, April 2020.
+ *
+ *	@param {String} linkMode
+ *	@param {Object} item - Zotero item
+ *	@param {String} title - Link name
+ *	@param {Boolean} snapshot
+ *	@param {String} contentType
+ *	@param {String} url - Link url
+ *
+ *	@return {None}
+ */
+function addLink(item, title, url) {
+	item.attachments.push({
+		linkMode: "linked_url",
+		title: title,
+		snapshot: false, 
+		contentType: "text/html",
+		url: url });
 }
 
 
@@ -229,11 +263,31 @@ function scrape_callback_sRSL(doc, url) {
 	function callback(obj, item) {
 		//Zotero.debug(item);
 		let metadata = getRecordDescription_sRSL(doc, url);
-		//Z.debug(metadata);
+		Z.debug(metadata);
 		if (metadata.itemType) {
 			item.itemType = metadata.itemType;
 		}
-		//Z.debug(item);
+		item.url = metadata.url;
+		item.libraryCatalog = metadata_sRSL.libraryCatalog;
+		item.callNumber = metadata[metadata_sRSL.call_number];
+		item.archive = metadata[metadata_sRSL.catalog];
+		let extra = [];
+		extra.push('RSLID: ' + metadata.rslid)
+		if (metadata.extraType) {
+			extra.push('Type: ' + metadata.extraType);
+		}
+		if (metadata[metadata_sRSL.bbk]) {
+			extra.push('BBK: ' + metadata[metadata_sRSL.bbk]);
+		}
+		if (item.extra) {
+			extra.push(item.extra);
+		}
+		item.extra = extra.join('\n');
+		
+		Z.debug(item.attachments[0]);
+		metadata.related_url.forEach(link => addLink(item, link.title, link.url));
+		
+		Z.debug(item);
 		item.complete();
 	}
 	return callback;
@@ -354,37 +408,56 @@ function getRecordDescription_sRSL(doc, url) {
 		metadata[property_name] = property_value;
 		delete metadata[''];
 		
+		// Record type
 		let type = catalog2type[metadata[metadata_sRSL.catalog]];
 		if (type) {
 			metadata.type = type;
 			metadata.itemType = type;
 		}
-		metadata.handle = url; 
-		metadata.rid_sRSL = url.slice(metadata_sRSL.rid_prefix.length);
+		
+		// Record ID
+		metadata.rslid = url.slice(metadata_sRSL.rslid_prefix.length);
+
+		// URL
+		metadata.url = url; 
+		
+		// Array of link attachments: {title: title, url: url}
+		metadata.related_url = [];
+		
+		// E-resource
 		if (metadata[metadata_sRSL.eresource]) {
-			metadata.erid_sRSL = base_eurl + metadata.rid_sRSL;
+			let eurl = base_eurl + metadata.rslid;
+			metadata.related_url.push({title: "E-resource", url: eurl});
 		} 
+		
+		// Workaround until implementation of a "technical standard" type
+		if (type == 'standard') {
+			metadata.itemType = 'report';
+			metadata.extraType = type;
+		}
+		
+		// Complementary thesis/autoreferat record if availabless
 		if (type == 'thesis') {
 			let aurl = attr(doc, metadata_sRSL.thesis_rel_css, metadata_sRSL.thesis_rel_attr);
 			if (aurl) {
-				aurl = metadata_sRSL.rid_prefix + 
+				aurl = metadata_sRSL.rslid_prefix + 
 					   aurl.slice(metadata_sRSL.thesis_rel_prefix.length + 
-								  metadata.rid_sRSL.length + '/'.length);
-				metadata.abstract_url = aurl;
+								  metadata.rslid.length + '/'.length);
+				metadata.related_url.push({title: "Autoreferat RSL record", url: aurl});
 			}
 		}
-		if (type == 'thesis abstract') {
+		if (type == 'thesisAutoreferat') {
+			// From citation point of view, the "manuscript" type might be more suitable
+			// On the other hand, the thesis should be cited rather then this paper anyway.
 			metadata.itemType = 'thesis';
 			let turl = attr(doc, metadata_sRSL.thesis_rel_css, metadata_sRSL.thesis_rel_attr);
 			if (turl) {
-				turl = metadata_sRSL.rid_prefix + 
+				turl = metadata_sRSL.rslid_prefix + 
 					   turl.slice(metadata_sRSL.thesis_rel_prefix.length + 
-								  metadata.rid_sRSL.length + '/'.length);
-				metadata.thesis_url = turl;
+								  metadata.rslid.length + '/'.length);
+				metadata.related_url.push({title: "Thesis RSL record", url: turl});
 			}
-		}
-		if (type == 'standard') {
-			metadata.itemType = 'report';
+			metadata.extraType = type;
 		}
 		
 		return metadata;
@@ -408,14 +481,17 @@ var testCases = [
 					}
 				],
 				"date": "2003",
-				"callNumber": "В383.5,09",
+				"archive": "Книги (изданные с 1831 г. по настоящее время)",
+				"callNumber": "FB 3 04-32/701",
+				"extra": "RSLID: 01002457709\nBBK: В383.5,09",
 				"language": "eng",
-				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"libraryCatalog": "Российская Государственная Библиотека",
 				"numPages": "11",
 				"place": "Дубна",
 				"publisher": "Объед. ин-т ядер. исслед",
 				"series": "Объединенный ин-т ядерных исследований, Дубна",
 				"seriesNumber": "E15-2003-186",
+				"url": "https://search.rsl.ru/ru/record/01002457709",
 				"attachments": [],
 				"tags": [
 					{
@@ -442,14 +518,22 @@ var testCases = [
 					}
 				],
 				"date": "1977",
-				"callNumber": "Г116.625с16",
+				"archive": "Авторефераты диссертаций",
+				"callNumber": "FB Др 352/1727; FB Др 352/1728",
+				"extra": "RSLID: 01007721928\nType: thesisAutoreferat\nBBK: Г116.625с16",
 				"language": "rus",
-				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"libraryCatalog": "Российская Государственная Библиотека",
 				"numPages": "32",
 				"place": "Ленинград",
 				"shortTitle": "Химия неорганических молекулярных комплексов в газовой фазе",
 				"university": "б. и.",
-				"attachments": [],
+				"url": "https://search.rsl.ru/ru/record/01007721928",
+				"attachments": [
+					{
+						"snapshot": false,
+						"mimeType": "text/html"
+					}
+				],
 				"tags": [],
 				"notes": [],
 				"seeAlso": []
@@ -471,13 +555,21 @@ var testCases = [
 					}
 				],
 				"date": "1977",
-				"callNumber": "Г116.625с16,0",
+				"archive": "Диссертации",
+				"callNumber": "OD Дд 78-2/85",
+				"extra": "RSLID: 01009512194\nBBK: Г116.625с16,0; Г123.505-25,0",
 				"language": "rus",
-				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"libraryCatalog": "Российская Государственная Библиотека",
 				"numPages": "308",
 				"place": "Ленинград",
 				"shortTitle": "Химия неорганических молекулярных комплексов в газовой фазе",
-				"attachments": [],
+				"url": "https://search.rsl.ru/ru/record/01009512194",
+				"attachments": [
+					{
+						"snapshot": false,
+						"mimeType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Неорганическая химия"
@@ -498,12 +590,15 @@ var testCases = [
 				"creators": [],
 				"date": "1998",
 				"ISBN": "9785879761405",
-				"callNumber": "Ж.с11я431(0)",
+				"archive": "Книги (изданные с 1831 г. по настоящее время)",
+				"callNumber": "FB 2 98-27/128; FB 2 98-27/129",
+				"extra": "RSLID: 01000580022\nBBK: Ж.с11я431(0)",
 				"language": "rus",
-				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"libraryCatalog": "Российская Государственная Библиотека",
 				"numPages": "352",
 				"place": "Таганрог",
 				"publisher": "Изд-во Таганрог. гос. пед. ин-та",
+				"url": "https://search.rsl.ru/ru/record/01000580022",
 				"attachments": [],
 				"tags": [
 					{
@@ -540,14 +635,17 @@ var testCases = [
 				],
 				"date": "2008",
 				"ISBN": "9785090198592",
-				"callNumber": "373.167.1:54",
+				"archive": "Книги (изданные с 1831 г. по настоящее время)",
+				"callNumber": "FB 3 08-13/261",
 				"edition": "12-е изд., испр",
+				"extra": "RSLID: 01004044482\nBBK: Г1я721-1",
 				"language": "rus",
-				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"libraryCatalog": "Российская Государственная Библиотека",
 				"numPages": "175",
 				"place": "Москва",
 				"publisher": "Просвещение",
 				"shortTitle": "Химия. Неорганическая химия",
+				"url": "https://search.rsl.ru/ru/record/01004044482",
 				"attachments": [],
 				"tags": [
 					{
@@ -574,12 +672,25 @@ var testCases = [
 					}
 				],
 				"date": "2019",
+				"archive": "Авторефераты диссертаций",
+				"callNumber": "FB 2Р 43/502",
+				"extra": "RSLID: 01008704042\nType: thesisAutoreferat",
 				"language": "rus",
-				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"libraryCatalog": "Российская Государственная Библиотека",
 				"numPages": "24",
 				"place": "Душанбе",
 				"shortTitle": "Комплексообразование серебра (I) с 1,2,4-триазолом и 1,2,4-триазолтиолом",
-				"attachments": [],
+				"url": "https://search.rsl.ru/ru/record/01008704042",
+				"attachments": [
+					{
+						"snapshot": false,
+						"mimeType": "text/html"
+					},
+					{
+						"snapshot": false,
+						"mimeType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Неорганическая химия"
@@ -605,12 +716,25 @@ var testCases = [
 					}
 				],
 				"date": "2019",
+				"archive": "Диссертации",
+				"callNumber": "OD 61 19-2/172",
+				"extra": "RSLID: 01010006646",
 				"language": "rus",
-				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"libraryCatalog": "Российская Государственная Библиотека",
 				"numPages": "135",
 				"place": "Душанбе",
 				"shortTitle": "Комплексообразование серебра (I) с 1,2,4-триазолом и 1,2,4-триазолтиолом",
-				"attachments": [],
+				"url": "https://search.rsl.ru/ru/record/01010006646",
+				"attachments": [
+					{
+						"snapshot": false,
+						"mimeType": "text/html"
+					},
+					{
+						"snapshot": false,
+						"mimeType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Неорганическая химия"
@@ -630,13 +754,21 @@ var testCases = [
 				"title": "Товары бытовой химии. Метод определения щелочных компонентов: Goods of household chemistry. Method for determination of alkaline components: государственный стандарт Российской Федерации: издание официальное: утвержден и введен в действие Постановлением Госстандарта России от 29 января 1997 г. № 26: введен впервые: введен 1998-01-01",
 				"creators": [],
 				"date": "1997",
-				"callNumber": "661.185.6.001.4:006.354",
+				"archive": "Стандарты",
+				"callNumber": "SVT ГОСТ Р 51021-97",
+				"extra": "RSLID: 01008942252\nType: standard",
 				"institution": "Изд-во стандартов",
 				"language": "rus",
-				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"libraryCatalog": "Российская Государственная Библиотека",
 				"place": "Москва",
 				"shortTitle": "Товары бытовой химии. Метод определения щелочных компонентов",
-				"attachments": [],
+				"url": "https://search.rsl.ru/ru/record/01008942252",
+				"attachments": [
+					{
+						"snapshot": false,
+						"mimeType": "text/html"
+					}
+				],
 				"tags": [],
 				"notes": [],
 				"seeAlso": []
@@ -652,13 +784,17 @@ var testCases = [
 				"title": "Химия и реставрация",
 				"creators": [],
 				"date": "1970",
+				"archive": "Книги (изданные с 1831 г. по настоящее время)",
+				"callNumber": "FB Бр 130/952; FB Бр 130/953; FB Арх",
+				"extra": "RSLID: 01007057068",
 				"language": "rus",
-				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"libraryCatalog": "Российская Государственная Библиотека",
 				"numPages": "10",
 				"place": "Москва",
 				"publisher": "б. и.",
 				"series": "Химия/ М-во культуры СССР",
 				"seriesNumber": "70",
+				"url": "https://search.rsl.ru/ru/record/01007057068",
 				"attachments": [],
 				"tags": [],
 				"notes": [],
@@ -676,12 +812,15 @@ var testCases = [
 				"creators": [],
 				"date": "2000",
 				"ISBN": "9785881792152",
-				"callNumber": "Г.я431(2)",
+				"archive": "Книги (изданные с 1831 г. по настоящее время)",
+				"callNumber": "FB 2 00-8/1758-0; FB 2 00-8/1759-9",
+				"extra": "RSLID: 01000681096\nBBK: Г.я431(2)",
 				"language": "rus",
-				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"libraryCatalog": "Российская Государственная Библиотека",
 				"numPages": "46",
 				"place": "Ухта",
 				"publisher": "Ухт. гос. техн. ун-т",
+				"url": "https://search.rsl.ru/ru/record/01000681096",
 				"attachments": [],
 				"tags": [
 					{
@@ -708,12 +847,15 @@ var testCases = [
 				"date": "2005",
 				"ISBN": "9785812208066",
 				"abstractNote": "Учебное пособие предназначено для студентов, аспирантов, научных и инженерно-технических работников, преподавателей ВУЗов и техникумов",
-				"callNumber": "541.1: 664.002.2 (075.8)",
+				"archive": "Книги (изданные с 1831 г. по настоящее время)",
+				"callNumber": "FB 12 05-8/83",
+				"extra": "RSLID: 01002792532\nBBK: Г5я732-1; Г6я732-1",
 				"language": "rus",
-				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"libraryCatalog": "Российская Государственная Библиотека",
 				"numPages": "282",
 				"place": "М.",
 				"publisher": "Моск. гос. ун-т печати",
+				"url": "https://search.rsl.ru/ru/record/01002792532",
 				"attachments": [],
 				"tags": [],
 				"notes": [],
@@ -737,14 +879,22 @@ var testCases = [
 				],
 				"date": "2008",
 				"ISBN": "9785261003861",
-				"callNumber": "544(075.8)",
+				"archive": "Книги (изданные с 1831 г. по настоящее время)",
+				"callNumber": "FB 3 08-25/12",
+				"extra": "RSLID: 01004080147\nBBK: Г5я738-1",
 				"language": "rus",
-				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"libraryCatalog": "Российская Государственная Библиотека",
 				"numPages": "111",
 				"place": "Архангельск",
 				"publisher": "Архангельский гос. технический ун-т",
 				"shortTitle": "Физическая химия",
-				"attachments": [],
+				"url": "https://search.rsl.ru/ru/record/01004080147",
+				"attachments": [
+					{
+						"snapshot": false,
+						"mimeType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Химические науки -- Физическая химия. Химическая физика -- Учебник для высшей школы -- Заочное обучение"
@@ -790,11 +940,13 @@ var testCases = [
 					}
 				],
 				"date": "1930",
-				"callNumber": "Г5я5",
+				"archive": "Сериальные издания (кроме газет)",
+				"extra": "RSLID: 01002386114\nBBK: Г5я5",
 				"language": "rus",
-				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"libraryCatalog": "Российская Государственная Библиотека",
 				"place": "Москва",
 				"publisher": "Российская академия наук",
+				"url": "https://search.rsl.ru/ru/record/01002386114",
 				"attachments": [],
 				"tags": [
 					{
@@ -845,10 +997,13 @@ var testCases = [
 					}
 				],
 				"date": "1930",
+				"archive": "Сериальные издания (кроме газет)",
+				"extra": "RSLID: 07000380351",
 				"language": "rus",
-				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"libraryCatalog": "Российская Государственная Библиотека",
 				"place": "Москва",
 				"publisher": "Российская академия наук",
+				"url": "https://search.rsl.ru/ru/record/07000380351",
 				"attachments": [],
 				"tags": [],
 				"notes": [
@@ -856,6 +1011,225 @@ var testCases = [
 						"note": "Основан Бюро физ.-хим. конф. при НТУ ВСНХ СССР в 1930 г Журнал издается под руководством Отделения химии и наук о материалах РАН 1931-1934 (Т. 5 Вып. 1-3) является \"Серией В Химического журнала\" Изд-во: Т. 1 Гос. изд-во; Т. 2 Гос. науч.-техн. изд-во; Т. 3-5 (Вып. 1-7) Гос. техн.-теорет. изд-во; Т. 5 (Вып. 8-12) - 11 (Вып. 1-3) ОНТИ НКТП СССР; Т. 11 (Вып. 4-6) - 38 не указано; Т. 39-66 Наука; Т. 67-72 МАИК \"Наука\"; Т. 73- Наука: МАИК \"Наука\"/Интерпериодика ; Т. 82- Наука Место изд.: 1930, т. 1, 29- М.; 1931. т. 2-28 М.; Л Изд-во: 2017- Федеральное государственное унитарное предприятие Академический научно-издательский, производственно-полиграфический и книгораспространительский центр \"Наука\" ; 2018- Российская академия наук"
 					}
 				],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "https://search.rsl.ru/ru/record/01010153224",
+		"items": [
+			{
+				"itemType": "report",
+				"title": "Стабильные жидкие углеводороды. Определение ванадия, никеля, алюминия, мышьяка, меди, железа, натрия и свинца спектральными методами: стандарт организации: издание официальное: введен впервые: дата введения 2018-12-01",
+				"creators": [
+					{
+						"lastName": "\"Газпром\", российское акционерное общество",
+						"creatorType": "editor",
+						"fieldMode": true
+					}
+				],
+				"date": "2019",
+				"archive": "Стандарты",
+				"callNumber": "SVT СТО Газпром 5.78-2018",
+				"extra": "RSLID: 01010153224\nType: standard\nBBK: Л54-101с344я861(2Р); Д453.1-43,0; И36-1я861",
+				"institution": "Газпром экспо",
+				"language": "rus",
+				"libraryCatalog": "Российская Государственная Библиотека",
+				"place": "Санкт-Петербург",
+				"shortTitle": "Стабильные жидкие углеводороды. Определение ванадия, никеля, алюминия, мышьяка, меди, железа, натрия и свинца спектральными методами",
+				"url": "https://search.rsl.ru/ru/record/01010153224",
+				"attachments": [],
+				"tags": [
+					{
+						"tag": "Горное дело -- Разработка нефтяных и газовых месторождений -- Исследование -- Стандарты"
+					},
+					{
+						"tag": "Науки о Земле -- Геологические науки -- Полезные ископаемые -- Горючие полезные ископаемые. Битумы -- Нефть -- Химический состав -- Стандарты"
+					}
+				],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "https://search.rsl.ru/ru/record/01008033518",
+		"items": [
+			{
+				"itemType": "report",
+				"title": "ГОСТ IEC 61010-1-2014. Безопасность электрических контрольно-измерительных приборов и лабораторного оборудования =: Safety requirements for electrical equipment for measurement, control, and laboratory use. Part 1. General requirements: межгосударственный стандарт. Ч. 1: Общие требования",
+				"creators": [
+					{
+						"lastName": "Межгосударственный совет по стандартизации, метрологии и сертификации",
+						"creatorType": "editor",
+						"fieldMode": true
+					}
+				],
+				"date": "2015",
+				"archive": "Стандарты",
+				"callNumber": "SVT ГОСТ IEC 61010-1-2014",
+				"extra": "RSLID: 01008033518\nType: standard",
+				"institution": "Стандартинформ",
+				"libraryCatalog": "Российская Государственная Библиотека",
+				"place": "Москва",
+				"shortTitle": "ГОСТ IEC 61010-1-2014. Безопасность электрических контрольно-измерительных приборов и лабораторного оборудования =",
+				"url": "https://search.rsl.ru/ru/record/01008033518",
+				"attachments": [],
+				"tags": [
+					{
+						"tag": "аналитическая химия"
+					},
+					{
+						"tag": "измерительные приборы"
+					},
+					{
+						"tag": "лабораторное оборудование"
+					},
+					{
+						"tag": "средства автоматизации и вычислительной техники"
+					},
+					{
+						"tag": "техника безопасности"
+					},
+					{
+						"tag": "химическая промышленность"
+					},
+					{
+						"tag": "электрические и электронные испытания"
+					}
+				],
+				"notes": [
+					{
+						"note": "Настоящий стандарт идентичен международному стандарту IEC 61010-1:2010 Safety requirements for electrical equipment for measurement, control, and laboratory use - Part 1: General requirements (Безопасность контрольно-измерительных приборов и лабораторного оборудования. Часть 1. Общие требования)"
+					}
+				],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "https://search.rsl.ru/ru/record/01010285501",
+		"items": [
+			{
+				"itemType": "book",
+				"title": "Индия: путеводитель + карта: 12+",
+				"creators": [
+					{
+						"firstName": "Дмитрий Евгеньевич",
+						"lastName": "Кульков",
+						"creatorType": "author"
+					}
+				],
+				"date": "2020",
+				"ISBN": "9785041079505",
+				"archive": "Карты",
+				"callNumber": "FB Гр Ч518; KGR Ко 169-20/IX-21",
+				"edition": "2-е изд., испр. и доп.",
+				"extra": "RSLID: 01010285501\nBBK: Я23(5Ид)",
+				"language": "rus",
+				"libraryCatalog": "Российская Государственная Библиотека",
+				"numPages": "413",
+				"place": "Москва",
+				"publisher": "Эксмо, Бомбора™",
+				"series": "Orangевый гид",
+				"shortTitle": "Индия",
+				"url": "https://search.rsl.ru/ru/record/01010285501",
+				"attachments": [],
+				"tags": [
+					{
+						"tag": "Литература универсального содержания -- Справочные издания -- Страноведческие справочники. Путеводители. Адресные книги. Адрес-календари -- Отдельные зарубежные страны -- Азия -- Индия"
+					},
+					{
+						"tag": "Республика Индия, государство"
+					}
+				],
+				"notes": [
+					{
+						"note": "Авт. указан перед вып. дан Указ. в конце кн"
+					}
+				],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "https://search.rsl.ru/ru/record/01008937943",
+		"items": [
+			{
+				"itemType": "thesis",
+				"title": "Реакция Дильса-Альдера при деформации органических веществ под давлением: диссертация ... кандидата химических наук: 02.00.03",
+				"creators": [
+					{
+						"firstName": "Валентин Сергеевич",
+						"lastName": "Абрамов",
+						"creatorType": "author"
+					}
+				],
+				"date": "1980",
+				"archive": "Диссертации",
+				"callNumber": "OD Дк 81-2/93",
+				"extra": "RSLID: 01008937943\nBBK: Г591,0; Г222.6Дл,0",
+				"language": "rus",
+				"libraryCatalog": "Российская Государственная Библиотека",
+				"numPages": "118",
+				"place": "Москва",
+				"shortTitle": "Реакция Дильса-Альдера при деформации органических веществ под давлением",
+				"url": "https://search.rsl.ru/ru/record/01008937943",
+				"attachments": [],
+				"tags": [
+					{
+						"tag": "Органическая химия"
+					}
+				],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "https://search.rsl.ru/ru/record/01000287561",
+		"items": [
+			{
+				"itemType": "thesis",
+				"title": "Влияние природы кислотного катализатора на селективность и кинетические характеристики гидратации камфена и α-пинена: автореферат дис. ... кандидата химических наук: 02.00.04",
+				"creators": [
+					{
+						"firstName": "Максим Васильевич",
+						"lastName": "Куликов",
+						"creatorType": "author"
+					}
+				],
+				"date": "2000",
+				"archive": "Авторефераты диссертаций",
+				"callNumber": "FB 9 00-6/2084-8; FB 9 00-6/2085-6",
+				"extra": "RSLID: 01000287561\nType: thesisAutoreferat\nBBK: Г221.76,0; Г292.3-271.6,0",
+				"language": "rus",
+				"libraryCatalog": "Российская Государственная Библиотека",
+				"numPages": "21",
+				"place": "Нижний Новгород",
+				"shortTitle": "Влияние природы кислотного катализатора на селективность и кинетические характеристики гидратации камфена и α-пинена",
+				"url": "https://search.rsl.ru/ru/record/01000287561",
+				"attachments": [
+					{
+						"snapshot": false,
+						"mimeType": "text/html"
+					},
+					{
+						"snapshot": false,
+						"mimeType": "text/html"
+					}
+				],
+				"tags": [
+					{
+						"tag": "Физическая химия"
+					}
+				],
+				"notes": [],
 				"seeAlso": []
 			}
 		]
