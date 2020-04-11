@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-10 16:08:19"
+	"lastUpdated": "2020-04-11 19:53:19"
 }
 
 /*
@@ -38,9 +38,9 @@
 /*
 	Testing/troubleshooting issues in Scaffold (valid as of April 2020):
 	Care must be taken when loading an additional translator as a preprocessor.
-	setTranslator does not:
-		- throw any errors when invalid translator id is supplied;
-		- provide any human readable feedback with translator name, so
+	setTranslator:
+		- does not throw any errors when invalid translator id is supplied;
+		- does not provide any human readable feedback with translator name, so
 		  even if a valid translator id for a wrong translator is supplied,
 		  no immediate feedback is supplied.
 	In both cases "Translation successful" status is likely to be returned.
@@ -90,10 +90,18 @@ const catalog2type = {
 	"Стандарты": "standard"
 }
 
-const metadata_sRSL = {
+/*
+	Filter strings used for extraction of metadata from
+	https://search.rsl.ru/(ru|en)/record/<RSLID>
+	https://search.rsl.ru/(ru|en)/search#
+*/
+const sRSL_filters = {
 	libraryCatalog: "Российская Государственная Библиотека",
 	marc_table_css: "div#marc-rec > table",
 	desc_table_css: "table.card-descr-table",
+	search_list_css: "span.js-item-maininfo",
+	search_record_rslid_attr: "data-id",
+	search_record_title: /^[^:/[]*/,
 	rslid_prefix: "https://search.rsl.ru/ru/record/",
 	thesis_rel_attr: "href",
 	thesis_rel_prefix: "/ru/transition/",
@@ -122,29 +130,27 @@ function text(docOrElem, selector, index) {
 /**
  *	Adds link attachment to a Zotero item.
  *
- *  There is a bug in Zotero the routine that creates attachments from JSON 
+ *  There appear to be a bug in Zotero routine that creates attachments from JSON 
  *  definitions. "linkMode" property affects (determines?) the type of the new 
  *  attachment and interpretation of the remaining properties. The routine 
- *  apparently enumerates keys, instead of accessing "linkMode" directly. It 
- *  processes properties in the order supplied, and if "linkMode" does not come 
- *  first, may not process earlier properties correctly. This is particularly 
- *  problematic, since there is no guaranteed order of members in a dictionary, 
- *  though, apparently, in simple cases at least the members are returned in the
- *  "added first" order. However, this behavior is not relaibly reproducible.
+ *  apparently enumerates keys of the supplied JSON object, instead of accessing
+ *  "linkMode" directly. It processes properties in the order supplied, and if 
+ *  "linkMode" does not come first, may not process earlier properties correctly. 
+ *  This is particularly problematic, since there is no guaranteed order of members 
+ *  in a dictionary, though, apparently, in simple cases at least the members are 
+ *  returned in the "added first" order. However, this behavior is not relaibly 
+ *  reproducible.
  *  Windows 7 x64, April 2020.
  *
- *	@param {String} linkMode
  *	@param {Object} item - Zotero item
  *	@param {String} title - Link name
- *	@param {Boolean} snapshot
- *	@param {String} contentType
  *	@param {String} url - Link url
  *
  *	@return {None}
  */
 function addLink(item, title, url) {
 	item.attachments.push({
-		linkMode: "linked_url",
+		linkMode: "linked_url", // Apparently, should be the first
 		title: title,
 		snapshot: false, 
 		contentType: "text/html",
@@ -158,17 +164,26 @@ function addLink(item, title, url) {
 		- "Ctrl/Cmd-T", "doc" receives "object HTMLDocument";
 		- "Run test", "doc" receives JS object (not sure about details).
 	Both objects have doc.location.host defined.
+	
+	When tester runs a web translator on a search results page, it fails to
+	present the search result selection dialog and throws an error:
+	"Error: Translator called select items with no items"
+	
+	When tester is called on "https://search.rsl.ru/ru/search#q=math", the part
+	starting with the hashtag is lost and not passed to the processing function.
+	
 	Working environment: Windows 7 x64
 */
 function detectWeb(doc, url) {
 	let domain = url.match(/^https?:\/\/([^/]*)/)[1];
 	let subdomain = domain.slice(0, -'.rsl.ru'.length);
+	let pathname = doc.location.pathname;
 	//Z.debug(subdomain);
 	switch(subdomain) {
 		case 'search':
-			if (url.indexOf('/search#q=') != -1) {
+			if (pathname.indexOf('/search') != -1) {
 				return 'multiple';
-			} else if (url.indexOf('/record/') != -1) {
+			} else if (pathname.indexOf('/record/') != -1) {
 				let metadata = getRecordDescription_sRSL(doc, url);
 				let itemType = metadata.itemType;
 				//Z.debug(metadata);
@@ -196,23 +211,22 @@ function detectWeb(doc, url) {
 
 
 /*
-	TODO: '(detectWeb(doc, url) == "multiple"' section a template/placeholder!
-		  Search results processing is not yet implemented.
-		
 	Scaffold issue (date detected: April 2020):
 	When detectWeb is run via
-		"Ctrl/Cmd-T", "doc" receives "object HTMLDocument";
+		"Ctrl/Cmd-T", "doc" receives "HTMLDocument object";
 		"Run test", "doc" receives JS object (not sure about details).
 	Working environment: Windows 7 x64
 */
 function doWeb(doc, url) {
 	// Zotero.debug(doc);
+	// Z.debug(doc.toString());
 	if (detectWeb(doc, url) != 'multiple') {
 		scrape(doc, url);
 	} else {
-		Zotero.selectItems(getSearchResults(doc, false),
-			function (items) {
-				if (items) ZU.processDocuments(Object.keys(items), scrape);
+		getSearchResults(doc, url);
+		Zotero.selectItems(getSearchResults(doc, url),
+			function (records) {
+				if (records) ZU.processDocuments(Object.keys(records), scrape);
 			}
 		);
 	}
@@ -268,16 +282,16 @@ function scrape_callback_sRSL(doc, url) {
 			item.itemType = metadata.itemType;
 		}
 		item.url = metadata.url;
-		item.libraryCatalog = metadata_sRSL.libraryCatalog;
-		item.callNumber = metadata[metadata_sRSL.call_number];
-		item.archive = metadata[metadata_sRSL.catalog];
+		item.libraryCatalog = sRSL_filters.libraryCatalog;
+		item.callNumber = metadata[sRSL_filters.call_number];
+		item.archive = metadata[sRSL_filters.catalog];
 		let extra = [];
 		extra.push('RSLID: ' + metadata.rslid)
 		if (metadata.extraType) {
 			extra.push('Type: ' + metadata.extraType);
 		}
-		if (metadata[metadata_sRSL.bbk]) {
-			extra.push('BBK: ' + metadata[metadata_sRSL.bbk]);
+		if (metadata[sRSL_filters.bbk]) {
+			extra.push('BBK: ' + metadata[sRSL_filters.bbk]);
 		}
 		if (item.extra) {
 			extra.push(item.extra);
@@ -294,36 +308,33 @@ function scrape_callback_sRSL(doc, url) {
 }
 
 
-/*
-	TODO: This is a template/placeholder!
-		  Search results processing is not yet implemented.
-*/
-function getSearchResults(doc, checkOnly) {
-	var items = {};
-	var found = false;
-	// TODO: adjust the CSS selector
-	var rows = doc.querySelectorAll('h2>a.title[href*="/article/"]');
+function getSearchResults(doc, url) {
+	var records = {};
+	var rows = doc.querySelectorAll(sRSL_filters.search_list_css);
+
+	// ZU.processDocuments(url, function (doc, url) { Z.debug(doc); });
+	// ZU.doGet(url, function (responseText, response, url) { Z.debug(response); });
+	
 	for (let row of rows) {
-		// TODO: check and maybe adjust
-		let href = row.href;
-		// TODO: check and maybe adjust
-		let title = ZU.trimInternal(row.textContent);
-		if (!href || !title) continue;
-		if (checkOnly) return true;
-		found = true;
-		items[href] = title;
+		let href = sRSL_filters.rslid_prefix + 
+				   row.getAttribute(sRSL_filters.search_record_rslid_attr);
+		let title = row.innerText.match(sRSL_filters.search_record_title)[0];
+		records[href] = title;
 	}
-	return found ? items : false;
+	return records;
 }
 
 
+/**
+ *	Parses record table with MARC data https://search.rsl.ru/(ru|en)/record/<RSLID>. 
+ *  Returned MARCXML string can be processed using the MARCXML import translator.
+ *
+ *	@return {String} - MARCXML record 
+ */
 function getMARCXML_sRSL(doc, url) {
-	// var marc_rows = doc.querySelectorAll('div#marc-rec > table > tbody > tr'); 
-	// Zotero.debug(text(marc_rows[0], 'td', 1));
-
 	let irow = 0;
 
-	let marc21_table_rows = doc.querySelector(metadata_sRSL.marc_table_css).rows;
+	let marc21_table_rows = doc.querySelector(sRSL_filters.marc_table_css).rows;
 	let marcxml_lines = [];
 
 	marcxml_lines.push(
@@ -387,13 +398,22 @@ function getMARCXML_sRSL(doc, url) {
 }
 
 
+/**
+ *	Parses table with human readable bibliographic description 
+ *  https://search.rsl.ru/(ru|en)/record/<RSLID>.
+ *  Returned metadata object can be used for additional processing of the output
+ *  produced by the MARCXML import translator.
+ *
+ *	@return {Object} - extracted metadata.
+ */
 function getRecordDescription_sRSL(doc, url) {
 		let irow = 0;
 		let metadata = {};
 		let property_name = '';
 		let property_value = '';
-		let desc_table_rows = doc.querySelector(metadata_sRSL.desc_table_css).rows;
+		let desc_table_rows = doc.querySelector(sRSL_filters.desc_table_css).rows;
 
+		// Parse description table
 		for (irow = 0; irow < desc_table_rows.length; irow++) {
 			let cur_cells = desc_table_rows[irow].cells;
 			let buffer = cur_cells[0].innerText;
@@ -409,14 +429,14 @@ function getRecordDescription_sRSL(doc, url) {
 		delete metadata[''];
 		
 		// Record type
-		let type = catalog2type[metadata[metadata_sRSL.catalog]];
+		let type = catalog2type[metadata[sRSL_filters.catalog]];
 		if (type) {
 			metadata.type = type;
 			metadata.itemType = type;
 		}
 		
 		// Record ID
-		metadata.rslid = url.slice(metadata_sRSL.rslid_prefix.length);
+		metadata.rslid = url.slice(sRSL_filters.rslid_prefix.length);
 
 		// URL
 		metadata.url = url; 
@@ -425,7 +445,7 @@ function getRecordDescription_sRSL(doc, url) {
 		metadata.related_url = [];
 		
 		// E-resource
-		if (metadata[metadata_sRSL.eresource]) {
+		if (metadata[sRSL_filters.eresource]) {
 			let eurl = base_eurl + metadata.rslid;
 			metadata.related_url.push({title: "E-resource", url: eurl});
 		} 
@@ -438,10 +458,10 @@ function getRecordDescription_sRSL(doc, url) {
 		
 		// Complementary thesis/autoreferat record if availabless
 		if (type == 'thesis') {
-			let aurl = attr(doc, metadata_sRSL.thesis_rel_css, metadata_sRSL.thesis_rel_attr);
+			let aurl = attr(doc, sRSL_filters.thesis_rel_css, sRSL_filters.thesis_rel_attr);
 			if (aurl) {
-				aurl = metadata_sRSL.rslid_prefix + 
-					   aurl.slice(metadata_sRSL.thesis_rel_prefix.length + 
+				aurl = sRSL_filters.rslid_prefix + 
+					   aurl.slice(sRSL_filters.thesis_rel_prefix.length + 
 								  metadata.rslid.length + '/'.length);
 				metadata.related_url.push({title: "Autoreferat RSL record", url: aurl});
 			}
@@ -450,10 +470,10 @@ function getRecordDescription_sRSL(doc, url) {
 			// From citation point of view, the "manuscript" type might be more suitable
 			// On the other hand, the thesis should be cited rather then this paper anyway.
 			metadata.itemType = 'thesis';
-			let turl = attr(doc, metadata_sRSL.thesis_rel_css, metadata_sRSL.thesis_rel_attr);
+			let turl = attr(doc, sRSL_filters.thesis_rel_css, sRSL_filters.thesis_rel_attr);
 			if (turl) {
-				turl = metadata_sRSL.rslid_prefix + 
-					   turl.slice(metadata_sRSL.thesis_rel_prefix.length + 
+				turl = sRSL_filters.rslid_prefix + 
+					   turl.slice(sRSL_filters.thesis_rel_prefix.length + 
 								  metadata.rslid.length + '/'.length);
 				metadata.related_url.push({title: "Thesis RSL record", url: turl});
 			}
