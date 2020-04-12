@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-12 21:00:25"
+	"lastUpdated": "2020-04-12 21:08:03"
 }
 
 /*
@@ -1161,7 +1161,7 @@ var testCases = [
 				],
 				"date": "1930",
 				"archive": "Сериальные издания (кроме газет)",
-				"extra": "RSLID: 01002386114\nBBK: Г5я5",
+				"extra": "RSLID: 01002386114\nType: journal\nBBK: Г5я5",
 				"language": "rus",
 				"libraryCatalog": "Российская Государственная Библиотека",
 				"place": "Москва",
@@ -1218,7 +1218,7 @@ var testCases = [
 				],
 				"date": "1930",
 				"archive": "Сериальные издания (кроме газет)",
-				"extra": "RSLID: 07000380351",
+				"extra": "RSLID: 07000380351\nType: journal",
 				"language": "rus",
 				"libraryCatalog": "Российская Государственная Библиотека",
 				"place": "Москва",
@@ -1593,7 +1593,7 @@ var testCases = [
 				"place": "Б. м.",
 				"series": "Коллекция Я. П. Гарелина",
 				"shortTitle": "Однообразно и уныло",
-				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=001478&set_entry=000001&format=001",
+				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=001478&set_entry=000001&format=999",
 				"attachments": [
 					{
 						"linkMode": "linked_url",
@@ -1633,7 +1633,7 @@ var testCases = [
 				"place": "Б. м.",
 				"series": "Коллекция Я. П. Гарелина",
 				"shortTitle": "Однообразно и уныло",
-				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=001478&set_entry=000001&format=001",
+				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=001478&set_entry=000001&format=999",
 				"attachments": [
 					{
 						"linkMode": "linked_url",
@@ -1673,7 +1673,7 @@ var testCases = [
 				"place": "Б. м.",
 				"series": "Коллекция Я. П. Гарелина",
 				"shortTitle": "Однообразно и уныло",
-				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=001478&set_entry=000001&format=001",
+				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=001478&set_entry=000001&format=999",
 				"attachments": [
 					{
 						"linkMode": "linked_url",
@@ -1733,7 +1733,7 @@ var testCases = [
 				"libraryCatalog": "a a Russian State Library RSL.ru",
 				"place": "Москва",
 				"publisher": "Российская академия наук",
-				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=005075&set_entry=000010&format=001",
+				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=005075&set_entry=000010&format=999",
 				"attachments": [
 					{
 						"linkMode": "linked_url",
@@ -1763,7 +1763,7 @@ var testCases = [
 				"extra": "RSLID: 01009918533",
 				"language": "rus",
 				"libraryCatalog": "a a Russian State Library RSL.ru",
-				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=005075&set_entry=000002&format=001",
+				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=005075&set_entry=000002&format=999",
 				"attachments": [
 					{
 						"linkMode": "linked_url",
