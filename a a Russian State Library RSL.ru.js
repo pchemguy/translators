@@ -2,14 +2,14 @@
 	"translatorID": "26ce1cb2-07ec-4d0e-9975-ce2ab35c8343",
 	"label": "a a Russian State Library RSL.ru",
 	"creator": "PChemGuy",
-	"target": "^https?://(search|aleph)\\.rsl\\.ru/",
+	"target": "^https?://(search|favorites|aleph)\\.rsl\\.ru/",
 	"minVersion": "3.0",
 	"maxVersion": "",
 	"priority": 100,
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-11 19:53:19"
+	"lastUpdated": "2020-04-12 21:00:25"
 }
 
 /*
@@ -52,8 +52,8 @@
 		https://search.rsl.ru (sRSL)
 		http://aleph.rsl.ru (aRSL)
 	search.rsl.ru records can be accessed via search.rsl.ru/(ru|en)/record/<RID>
-	aleph.rsl.ru appears to be extremely buggy with no reliable way of directly
-	accessing individual records via record ID's (RID) (as of April 2020).
+	aleph.rsl.ru is a total mess, a very basic partial support for single record 
+	saving is implemented.
 	
 	search.rsl.ru/(ru|en)/download/marc21?id=<RID> interface provides access to 
 	binary MARC21 records, but requires prior authentication, so they are not used.
@@ -64,6 +64,13 @@
 	
 	Postprocessing for search.rsl.ru aslo involves parsing of the human readable
 	description to harvest additional metadata.
+	
+	TODO:
+	search.rsl.ru - some records contain expandable "Consists of" or "Periodicals"
+	reference with an arrow, when displayed as part of a search result, and "Contents" 
+	tab on the record page, referring to related/constituent records. Such references
+	may potentially be processed via the "multiple" routine, but such processing 
+	is not implemented.
 */
 
 
@@ -85,10 +92,11 @@
 const catalog2type = {
 	"Книги (изданные с 1831 г. по настоящее время)": "book",
 	"Старопечатные книги (изданные с 1450 по 1830 г.)": "book",
+	"Сериальные издания (кроме газет)": "journal",
 	"Авторефераты диссертаций": "thesisAutoreferat",
 	"Диссертации": "thesis",
 	"Стандарты": "standard"
-}
+};
 
 /*
 	Filter strings used for extraction of metadata from
@@ -106,11 +114,28 @@ const sRSL_filters = {
 	thesis_rel_attr: "href",
 	thesis_rel_prefix: "/ru/transition/",
 	thesis_rel_css: 'a[href^="/ru/transition/"]',
+	fav_rslid_css: "a.rsl-link",
+	fav_desc_css: "div.rsl-fav-item-descr",
 	catalog: "Каталоги",
 	bbk: "BBK-код",
 	call_number: "Места хранения",
 	eresource: "Электронный адрес"
-}
+};
+
+/*
+	Filter strings for extraction of metadata from
+	aleph.rsl.ru
+*/
+const aRSL_filters = {
+	marc_table_tag_css: "td.td1[nowrap]",
+	marc_table_val_css: "td.td1:not([nowrap])",
+	marc_table_set_css: 'a[title="Добавить в подборку"]',
+	record_marc_signature: "&format=001",
+	record_standard_signature: "&format=999",
+	record_format_regex: /&format=[0-9]{3}/,
+	url_prefix: "http://aleph.rsl.ru/F/",
+};
+
 
 const base_eurl = 'https://dlib.rsl.ru/';
 
@@ -130,6 +155,14 @@ function text(docOrElem, selector, index) {
 /**
  *	Adds link attachment to a Zotero item.
  *
+ *  Note attachment creation issue.
+ *  Problem manifestation:
+ *  If 'linkMode: "linked_url"' is not present or is the last (possibly also in
+ *  the middle) line in the object definition, the "title" property is ignored,
+ *  e.g., for 'research.rsl.ru/ru/record/01004956040' the "title" is set to
+ *  "01004956040" regardless of the specified title. If 'linkMode: "linked_url"'
+ *  is the first member as below, the "title" field is set as expected. 
+ * 
  *  There appear to be a bug in Zotero routine that creates attachments from JSON 
  *  definitions. "linkMode" property affects (determines?) the type of the new 
  *  attachment and interpretation of the remaining properties. The routine 
@@ -170,7 +203,8 @@ function addLink(item, title, url) {
 	"Error: Translator called select items with no items"
 	
 	When tester is called on "https://search.rsl.ru/ru/search#q=math", the part
-	starting with the hashtag is lost and not passed to the processing function.
+	starting with the hashtag is lost and not passed to the processing function
+	(not available from either "url" or "doc").
 	
 	Working environment: Windows 7 x64
 */
@@ -194,17 +228,27 @@ function detectWeb(doc, url) {
 			}
 			break;
 		case 'aleph':
-			if (url.match(/func=(find-[abcm]|basket-short|(history|short)-action)/)) {
-				return 'multiple';
-			} else if (url.indexOf('func=full-set-set') != -1) {
+			/*
+				There are other single record patterns, but the full repertoire
+				is unclear. Only this pattern is supported
+			*/
+			if (url.indexOf('func=full-set-set') != -1) {
 				return 'book';
+			/*
+				There are other single record patterns, but the full repertoire
+				is unclear. Due to awful implementation, "multiple" is not supported.
+			*/
+			} else if (url.match(/func=(find-[abcm]|basket-short|(history|short)-action)/)) {
+				Z.debug('Due to awful implementation, "multiple" is not supported.');
+				// return 'multiple';
+				return false;
 			} else {
 				Z.debug('Catalog section not supported');
 				return false;
 			}
 			break;
 		default:
-			Z.debug('Subdomain not supported');
+			Z.debug('Subdomain not supported: ' + subdomain);
 			return false;
 	}
 }
@@ -220,8 +264,27 @@ function detectWeb(doc, url) {
 function doWeb(doc, url) {
 	// Zotero.debug(doc);
 	// Z.debug(doc.toString());
+	let domain = url.match(/^https?:\/\/([^/]*)/)[1];
+	let subdomain = domain.slice(0, -'.rsl.ru'.length);
 	if (detectWeb(doc, url) != 'multiple') {
-		scrape(doc, url);
+		switch(subdomain) {
+			case 'search':
+				scrape(doc, url);
+				break;
+			case 'aleph':
+				if (url.indexOf(aRSL_filters.record_marc_signature) != -1) {
+					scrape(doc, url);
+				} else {
+					let href = aRSL_filters.url_prefix + '?' + 
+					           url.split('?')[1].replace(aRSL_filters.record_format_regex, 
+														 aRSL_filters.record_marc_signature);
+					ZU.processDocuments([href], scrape);
+				}
+				break;
+			default:
+				Z.debug('Subdomain not supported');
+				return false;
+		}
 	} else {
 		getSearchResults(doc, url);
 		Zotero.selectItems(getSearchResults(doc, url),
@@ -245,8 +308,8 @@ function scrape(doc, url) {
 			scrape_callback = scrape_callback_sRSL;
 			break;
 		case 'aleph':
-			Z.debug('Subdomain not supported');
-			return false;
+			record_marcxml = getMARCXML_aRSL(doc, url);
+			scrape_callback = scrape_callback_aRSL;
 			break;
 		default:
 			Z.debug('Subdomain not supported');
@@ -266,7 +329,9 @@ function scrape(doc, url) {
 
 /*
 	Additional processing after the MARCXML translator for search.rsl.ru
-	Parse description table into a dictionary, pull and set
+	Adjust item type based on catalog information for supported catalogs. For 
+	types not available in Zotero, "type" annotation is added to the "extra" 
+	field. Add the following information: 
 		RSL record ID,
 		call numbers (semicolon separated),
 		catalog/item type,
@@ -301,6 +366,38 @@ function scrape_callback_sRSL(doc, url) {
 		//Z.debug(item.attachments[0]);
 		metadata.related_url.forEach(link => addLink(item, link.title, link.url));
 		
+		//Z.debug(item);
+		item.complete();
+	}
+	return callback;
+}
+
+
+/*
+	Additional processing after the MARCXML translator for aleph.rsl.ru
+*/
+function scrape_callback_aRSL(doc, url) {
+	function callback(obj, item) {
+
+		// RSLID
+		let add2set = attr(doc, aRSL_filters.marc_table_set_css, 'href');
+		let RSLID = add2set.match(/&doc_library=RSL([0-9]{2})/)[1] + 
+					add2set.match(/&doc_number=([0-9]{9})/)[1]
+		let extra = ['RSLID: ' + RSLID];
+		if (item.extra) { extra.push(item.extra); }
+		item.extra = extra.join('\n');
+		
+		item.url = aRSL_filters.url_prefix + '?' + 
+				   url.split('?')[1].replace(aRSL_filters.record_format_regex, 
+											 aRSL_filters.record_standard_signature);
+
+		let metadata = {};
+		metadata.related_url = [];
+		href = sRSL_filters.rslid_prefix + RSLID;
+		metadata.related_url.push({title: "search.rsl.ru", url: href});
+
+		metadata.related_url.forEach(link => addLink(item, link.title, link.url));
+
 		//Z.debug(item);
 		item.complete();
 	}
@@ -348,8 +445,8 @@ function getMARCXML_sRSL(doc, url) {
 	for (irow; irow < marc21_table_rows.length; irow++) {
 		let cur_cells = marc21_table_rows[irow].cells;
 		let field_tag = cur_cells[0].innerText;
-		if (Number(field_tag) > 8) { break; }
 		let field_val = cur_cells[1].innerText;
+		if (Number(field_tag) > 8) { break; }
 		marcxml_lines.push(
 			'    <controlfield tag="' + field_tag + '">' + field_val.replace(/#/g, ' ') + '</controlfield>'
 		);
@@ -399,8 +496,8 @@ function getMARCXML_sRSL(doc, url) {
 
 
 /**
- *	Parses table with human readable bibliographic description 
- *  https://search.rsl.ru/(ru|en)/record/<RSLID>.
+ *	Parses record table with human readable bibliographic description on
+ *  https://search.rsl.ru/(ru|en)/record/<RSLID> and constructs metadata object.
  *  Returned metadata object can be used for additional processing of the output
  *  produced by the MARCXML import translator.
  *
@@ -456,6 +553,11 @@ function getRecordDescription_sRSL(doc, url) {
 			metadata.extraType = type;
 		}
 		
+		if (type == 'journal') {
+			metadata.itemType = 'book';
+			metadata.extraType = type;
+		}
+
 		// Complementary thesis/autoreferat record if availabless
 		if (type == 'thesis') {
 			let aurl = attr(doc, sRSL_filters.thesis_rel_css, sRSL_filters.thesis_rel_attr);
@@ -481,6 +583,88 @@ function getRecordDescription_sRSL(doc, url) {
 		}
 		
 		return metadata;
+}
+
+
+/**
+ *	Parses record table with MARC data from aleph.rsl.ru. 
+ *  Returned MARCXML string can be processed using the MARCXML import translator.
+ *
+ *	@return {String} - MARCXML record 
+ */
+function getMARCXML_aRSL(doc, url) {
+	// -------------- Parse MARC table into a MARC array object -------------- //
+	let marc_tags = doc.querySelectorAll(aRSL_filters.marc_table_tag_css);
+	let marc_vals = doc.querySelectorAll(aRSL_filters.marc_table_val_css);
+	let marc = [];
+	
+	if (marc_tags.length < 1) { return false; }
+	
+	// Leader
+	marc.push([ marc_tags[1].innerText.padEnd(5, ' '), marc_vals[1].innerText]);
+
+	for (let field_count = 2; field_count < marc_tags.length; field_count++) {
+		let tag = marc_tags[field_count].innerText; 
+		if (Number(tag)) {
+			tag = tag.padEnd(5, ' ');
+			marc.push([tag, marc_vals[field_count].innerText]);
+		}
+	}
+
+	if (marc.length < 5) { return false; }
+
+	// ---------- Format MARCXML from the prepared MARC array object --------- //  
+	let irow = 0;
+	let marcxml_lines = [];
+
+	marcxml_lines.push(
+		'<?xml version="1.0" encoding="UTF-8"?>',
+		'<record xmlns="http://www.loc.gov/MARC21/slim" type="Bibliographic">',
+		'    <leader>' + marc[1][1] + '</leader>'
+	);
+	irow++;
+	
+	// Control fields
+	for (irow; irow < marc.length; irow++) {
+		let field_tag = marc[irow][0].slice(0, 3);
+		let field_val = marc[irow][1];
+		if (Number(field_tag) > 8) { break; }
+		marcxml_lines.push(
+			'    <controlfield tag="' + field_tag + '">' + field_val + '</controlfield>'
+		);
+	}
+	
+	// Data fields
+	for (irow; irow < marc.length; irow++) {
+		let field_tag = marc[irow][0].slice(0, 3);
+		let field_ind = marc[irow][0].slice(3);
+		let field_val = marc[irow][1];
+
+		// Data field tag and indicators
+		marcxml_lines.push('    <datafield tag="' + field_tag + 
+									   '" ind1="' + field_ind[0] + 
+									   '" ind2="' + field_ind[1] + '">');
+		
+		// Subfields
+		let subfields = field_val.split('|');
+		for (let isubfield = 1; isubfield < subfields.length; isubfield++) {
+			// Split on first <space> character to extract the subfield code and its contents
+			subfield = subfields[isubfield].replace(/\s/, '\x01').split('\x01');
+			marcxml_lines.push(
+				'        <subfield code="' + subfield[0] + '">' + subfield[1] + '</subfield>'
+			);
+		}
+		
+		marcxml_lines.push(
+			'    </datafield>'
+		);
+	}
+
+	marcxml_lines.push(
+		'</record>'
+	);
+	
+	return marcxml_lines.join('\n');
 }
 
 
@@ -1269,6 +1453,326 @@ var testCases = [
 						"tag": "Физическая химия"
 					}
 				],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "https://search.rsl.ru/ru/record/01002444380",
+		"items": [
+			{
+				"itemType": "book",
+				"title": "Основы общей химии: В 2 т.",
+				"creators": [
+					{
+						"firstName": "Борис Владимирович",
+						"lastName": "Некрасов",
+						"creatorType": "author"
+					}
+				],
+				"date": "2003",
+				"ISBN": "9785811405008",
+				"abstractNote": "Книга является первым томом двухтомной монографии, суммирующей основные особенности химии всех химических элементов. Монография предназначена для широкого круга научных работников, инженеров, студентов химических специальностей",
+				"archive": "Книги (изданные с 1831 г. по настоящее время)",
+				"edition": "4. изд., стер",
+				"extra": "RSLID: 01002444380\nBBK: Г1я731-1",
+				"language": "rus",
+				"libraryCatalog": "Российская Государственная Библиотека",
+				"place": "СПб. [и др.]",
+				"publisher": "Лань",
+				"shortTitle": "Основы общей химии",
+				"url": "https://search.rsl.ru/ru/record/01002444380",
+				"attachments": [],
+				"tags": [
+					{
+						"tag": "Химические науки -- Общая и неорганическая химия -- Учебник для высшей школы"
+					}
+				],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "https://search.rsl.ru/ru/record/01002386114",
+		"items": [
+			{
+				"itemType": "book",
+				"title": "Журнал физической химии",
+				"creators": [
+					{
+						"lastName": "АН СССР",
+						"creatorType": "editor",
+						"fieldMode": true
+					},
+					{
+						"lastName": "СССР",
+						"creatorType": "editor",
+						"fieldMode": true
+					},
+					{
+						"lastName": "РСФСР",
+						"creatorType": "editor",
+						"fieldMode": true
+					},
+					{
+						"lastName": "СССР",
+						"creatorType": "editor",
+						"fieldMode": true
+					},
+					{
+						"lastName": "Российская академия наук",
+						"creatorType": "editor",
+						"fieldMode": true
+					}
+				],
+				"date": "1930",
+				"archive": "Сериальные издания (кроме газет)",
+				"extra": "RSLID: 01002386114\nType: journal\nBBK: Г5я5",
+				"language": "rus",
+				"libraryCatalog": "Российская Государственная Библиотека",
+				"place": "Москва",
+				"publisher": "Российская академия наук",
+				"url": "https://search.rsl.ru/ru/record/01002386114",
+				"attachments": [],
+				"tags": [
+					{
+						"tag": "Химические науки -- Физическая химия. Химическая физика -- Общий раздел -- Периодические и продолжающиеся издания"
+					}
+				],
+				"notes": [
+					{
+						"note": "Основан Бюро физ.-хим. конф. при НТУ ВСНХ СССР в 1930 г Журнал издается под руководством Отделения химии и наук о материалах РАН 1931-1934 (Т. 5 Вып. 1-3) является \"Серией В Химического журнала\" Изд-во: Т. 1 Гос. изд-во; Т. 2 Гос. науч.-техн. изд-во ; Т. 3-5 (Вып. 1-7) Гос. техн.-теорет. изд-во ; Т. 5 (Вып. 8-12) - 11 (Вып. 1-3) ОНТИ НКТП СССР; Т. 11 (Вып. 4-6) - 38 не указано; Т. 39-66 Наука ; Т. 67-72 МАИК \"Наука\"; Т. 73- Наука: МАИК \"Наука\"/Интерпериодика ; Т. 82- Наука Место изд.: 1930, т. 1, 29- М.; 1931. т. 2-28 М.; Л Изд-во: 2017- Федеральное государственное унитарное предприятие Академический научно-издательский, производственно-полиграфический и книгораспространительский центр \"Наука\" ; 2018- Российская академия наук"
+					}
+				],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "https://search.rsl.ru/ru/record/07000380352",
+		"items": [
+			{
+				"itemType": "book",
+				"title": "Журнал физической химии. 2019",
+				"creators": [],
+				"archive": "Книги (изданные с 1831 г. по настоящее время)",
+				"extra": "RSLID: 07000380352",
+				"language": "rus",
+				"libraryCatalog": "Российская Государственная Библиотека",
+				"url": "https://search.rsl.ru/ru/record/07000380352",
+				"attachments": [],
+				"tags": [],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://aleph.rsl.ru/F/RHHCIAN6HNXCK6MBTHQTH8JPT2T8LG3T6VPTVBKAUXEA8HITMK-01986?func=full-set-set&set_number=001478&set_entry=000001&format=001",
+		"items": [
+			{
+				"itemType": "book",
+				"title": "Однообразно и уныло: часть VIII из романа в стихах «Роман девушки»: стихотворение: [список]",
+				"creators": [
+					{
+						"firstName": "Евдокия Петровна",
+						"lastName": "Ростопчина",
+						"creatorType": "author"
+					}
+				],
+				"extra": "RSLID: 01010089849",
+				"language": "rus",
+				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"numPages": "1",
+				"place": "Б. м.",
+				"series": "Коллекция Я. П. Гарелина",
+				"shortTitle": "Однообразно и уныло",
+				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=001478&set_entry=000001&format=001",
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "search.rsl.ru",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
+				"tags": [],
+				"notes": [
+					{
+						"note": "Сохранность: края листа надорваны; реставрирован в 1950 г Надписи, записи, пометы: поправки и надпись-автограф (французский яз.)"
+					}
+				],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=001478&set_entry=000001&format=037",
+		"items": [
+			{
+				"itemType": "book",
+				"title": "Однообразно и уныло: часть VIII из романа в стихах «Роман девушки»: стихотворение: [список]",
+				"creators": [
+					{
+						"firstName": "Евдокия Петровна",
+						"lastName": "Ростопчина",
+						"creatorType": "author"
+					}
+				],
+				"extra": "RSLID: 01010089849",
+				"language": "rus",
+				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"numPages": "1",
+				"place": "Б. м.",
+				"series": "Коллекция Я. П. Гарелина",
+				"shortTitle": "Однообразно и уныло",
+				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=001478&set_entry=000001&format=001",
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "search.rsl.ru",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
+				"tags": [],
+				"notes": [
+					{
+						"note": "Сохранность: края листа надорваны; реставрирован в 1950 г Надписи, записи, пометы: поправки и надпись-автограф (французский яз.)"
+					}
+				],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://aleph.rsl.ru/F/9F63N9XQHXHST5RUEVM27SY4THNCJSYLXPI53E2V7GDDRMNUUJ-02384?func=full-set-set&set_number=001478&set_entry=000001&format=002",
+		"items": [
+			{
+				"itemType": "book",
+				"title": "Однообразно и уныло: часть VIII из романа в стихах «Роман девушки»: стихотворение: [список]",
+				"creators": [
+					{
+						"firstName": "Евдокия Петровна",
+						"lastName": "Ростопчина",
+						"creatorType": "author"
+					}
+				],
+				"extra": "RSLID: 01010089849",
+				"language": "rus",
+				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"numPages": "1",
+				"place": "Б. м.",
+				"series": "Коллекция Я. П. Гарелина",
+				"shortTitle": "Однообразно и уныло",
+				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=001478&set_entry=000001&format=001",
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "search.rsl.ru",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
+				"tags": [],
+				"notes": [
+					{
+						"note": "Сохранность: края листа надорваны; реставрирован в 1950 г Надписи, записи, пометы: поправки и надпись-автограф (французский яз.)"
+					}
+				],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=005075&set_entry=000010&format=001",
+		"items": [
+			{
+				"itemType": "book",
+				"title": "Журнал физической химии",
+				"creators": [
+					{
+						"lastName": "АН СССР",
+						"creatorType": "editor",
+						"fieldMode": true
+					},
+					{
+						"lastName": "СССР",
+						"creatorType": "editor",
+						"fieldMode": true
+					},
+					{
+						"lastName": "РСФСР",
+						"creatorType": "editor",
+						"fieldMode": true
+					},
+					{
+						"lastName": "СССР",
+						"creatorType": "editor",
+						"fieldMode": true
+					},
+					{
+						"lastName": "Российская академия наук",
+						"creatorType": "editor",
+						"fieldMode": true
+					}
+				],
+				"date": "1930",
+				"callNumber": "Г5я5",
+				"extra": "RSLID: 01002386114",
+				"language": "rus",
+				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"place": "Москва",
+				"publisher": "Российская академия наук",
+				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=005075&set_entry=000010&format=001",
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "search.rsl.ru",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
+				"tags": [],
+				"notes": [
+					{
+						"note": "Основан Бюро физ.-хим. конф. при НТУ ВСНХ СССР в 1930 г Журнал издается под руководством Отделения химии и наук о материалах РАН 1931-1934 (Т. 5 Вып. 1-3) является \"Серией В Химического журнала\" Изд-во: Т. 1 Гос. изд-во; Т. 2 Гос. науч.-техн. изд-во ; Т. 3-5 (Вып. 1-7) Гос. техн.-теорет. изд-во ; Т. 5 (Вып. 8-12) - 11 (Вып. 1-3) ОНТИ НКТП СССР; Т. 11 (Вып. 4-6) - 38 не указано; Т. 39-66 Наука ; Т. 67-72 МАИК \"Наука\"; Т. 73- Наука: МАИК \"Наука\"/Интерпериодика ; Т. 82- Наука Место изд.: 1930, т. 1, 29- М.; 1931. т. 2-28 М.; Л Изд-во: 2017- Федеральное государственное унитарное предприятие Академический научно-издательский, производственно-полиграфический и книгораспространительский центр \"Наука\" ; 2018- Российская академия наук"
+					}
+				],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=005075&set_entry=000002&format=001",
+		"items": [
+			{
+				"itemType": "book",
+				"title": "Журнал физической химии. 2019",
+				"creators": [],
+				"extra": "RSLID: 01009918533",
+				"language": "rus",
+				"libraryCatalog": "a a Russian State Library RSL.ru",
+				"url": "http://aleph.rsl.ru/F/?func=full-set-set&set_number=005075&set_entry=000002&format=001",
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "search.rsl.ru",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
+				"tags": [],
 				"notes": [],
 				"seeAlso": []
 			}
