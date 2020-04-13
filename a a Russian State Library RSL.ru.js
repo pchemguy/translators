@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-12 21:08:03"
+	"lastUpdated": "2020-04-13 01:01:05"
 }
 
 /*
@@ -110,12 +110,14 @@ const sRSL_filters = {
 	search_list_css: "span.js-item-maininfo",
 	search_record_rslid_attr: "data-id",
 	search_record_title: /^[^:/[]*/,
+	search_pattern: "https://search.rsl.ru/ru/search#q=id:${id} AND title:(${title})",
 	rslid_prefix: "https://search.rsl.ru/ru/record/",
 	thesis_rel_attr: "href",
 	thesis_rel_prefix: "/ru/transition/",
 	thesis_rel_css: 'a[href^="/ru/transition/"]',
 	fav_rslid_css: "a.rsl-link",
 	fav_desc_css: "div.rsl-fav-item-descr",
+	title: "Заглавие",
 	catalog: "Каталоги",
 	bbk: "BBK-код",
 	call_number: "Места хранения",
@@ -226,6 +228,9 @@ function detectWeb(doc, url) {
 				Z.debug('Catalog section not supported');
 				return false;
 			}
+			break;
+		case 'favorites':
+			return 'multiple';
 			break;
 		case 'aleph':
 			/*
@@ -406,18 +411,31 @@ function scrape_callback_aRSL(doc, url) {
 
 
 function getSearchResults(doc, url) {
+	let domain = url.match(/^https?:\/\/([^/]*)/)[1];
+	let subdomain = domain.slice(0, -'.rsl.ru'.length);
 	var records = {};
-	var rows = doc.querySelectorAll(sRSL_filters.search_list_css);
 
-	// ZU.processDocuments(url, function (doc, url) { Z.debug(doc); });
-	// ZU.doGet(url, function (responseText, response, url) { Z.debug(response); });
+	if (subdomain == 'search') {
+		let rows = doc.querySelectorAll(sRSL_filters.search_list_css);
 	
-	for (let row of rows) {
-		let href = sRSL_filters.rslid_prefix + 
-				   row.getAttribute(sRSL_filters.search_record_rslid_attr);
-		let title = row.innerText.match(sRSL_filters.search_record_title)[0];
-		records[href] = title;
+		// ZU.processDocuments(url, function (doc, url) { Z.debug(doc); });
+		// ZU.doGet(url, function (responseText, response, url) { Z.debug(response); });
+		
+		for (let row of rows) {
+			let href = sRSL_filters.rslid_prefix + 
+					   row.getAttribute(sRSL_filters.search_record_rslid_attr);
+			let title = row.innerText.match(sRSL_filters.search_record_title)[0];
+			records[href] = title;
+		}
+	} else if (subdomain == 'favorites') {
+		let rows = doc.querySelectorAll(sRSL_filters.fav_rslid_css);
+		for (let row of rows) {
+			let href = row.href;
+			let title = row.parentNode.parentNode.querySelector(sRSL_filters.fav_desc_css).innerText.match(sRSL_filters.search_record_title)[0];
+			records[href] = title;
+		}
 	}
+
 	return records;
 }
 
@@ -541,6 +559,17 @@ function getRecordDescription_sRSL(doc, url) {
 		// Array of link attachments: {title: title, url: url}
 		metadata.related_url = [];
 		
+		/*
+			Some metadata is only included with the record when displayed as part 
+			of search result. Here a search query is constructed combining (AND) 
+			record title and system record id, which is RSL ID without the two 
+			most significant digits.
+		*/
+		let href = sRSL_filters.search_pattern
+					.replace(/\$\{title\}/, metadata[sRSL_filters.title])
+					.replace(/\$\{id\}/, metadata.rslid.slice(2));
+		metadata.related_url.push({title: "via search", url: href});
+
 		// E-resource
 		if (metadata[sRSL_filters.eresource]) {
 			let eurl = base_eurl + metadata.rslid;
@@ -696,7 +725,14 @@ var testCases = [
 				"series": "Объединенный ин-т ядерных исследований, Дубна",
 				"seriesNumber": "E15-2003-186",
 				"url": "https://search.rsl.ru/ru/record/01002457709",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Физико-математические науки -- Физика -- Физика атомного ядра -- Ядерные реакции"
@@ -733,6 +769,12 @@ var testCases = [
 				"university": "б. и.",
 				"url": "https://search.rsl.ru/ru/record/01007721928",
 				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					},
 					{
 						"linkMode": "linked_url",
 						"title": "Thesis RSL record",
@@ -773,6 +815,12 @@ var testCases = [
 				"attachments": [
 					{
 						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					},
+					{
+						"linkMode": "linked_url",
 						"title": "Autoreferat RSL record",
 						"snapshot": false,
 						"contentType": "text/html"
@@ -807,7 +855,14 @@ var testCases = [
 				"place": "Таганрог",
 				"publisher": "Изд-во Таганрог. гос. пед. ин-та",
 				"url": "https://search.rsl.ru/ru/record/01000580022",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Техника и технические науки -- Применение математических методов -- Материалы конференции"
@@ -854,7 +909,14 @@ var testCases = [
 				"publisher": "Просвещение",
 				"shortTitle": "Химия. Неорганическая химия",
 				"url": "https://search.rsl.ru/ru/record/01004044482",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Химические науки -- Общая и неорганическая химия -- Учебник для средней общеобразовательной школы"
@@ -890,6 +952,12 @@ var testCases = [
 				"shortTitle": "Комплексообразование серебра (I) с 1,2,4-триазолом и 1,2,4-триазолтиолом",
 				"url": "https://search.rsl.ru/ru/record/01008704042",
 				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					},
 					{
 						"linkMode": "linked_url",
 						"title": "E-resource",
@@ -940,6 +1008,12 @@ var testCases = [
 				"attachments": [
 					{
 						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					},
+					{
+						"linkMode": "linked_url",
 						"title": "E-resource",
 						"snapshot": false,
 						"contentType": "text/html"
@@ -982,6 +1056,12 @@ var testCases = [
 				"attachments": [
 					{
 						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					},
+					{
+						"linkMode": "linked_url",
 						"title": "E-resource",
 						"snapshot": false,
 						"contentType": "text/html"
@@ -1013,7 +1093,14 @@ var testCases = [
 				"series": "Химия/ М-во культуры СССР",
 				"seriesNumber": "70",
 				"url": "https://search.rsl.ru/ru/record/01007057068",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [],
 				"notes": [],
 				"seeAlso": []
@@ -1039,7 +1126,14 @@ var testCases = [
 				"place": "Ухта",
 				"publisher": "Ухт. гос. техн. ун-т",
 				"url": "https://search.rsl.ru/ru/record/01000681096",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Химия -- Материалы конференции"
@@ -1074,7 +1168,14 @@ var testCases = [
 				"place": "М.",
 				"publisher": "Моск. гос. ун-т печати",
 				"url": "https://search.rsl.ru/ru/record/01002792532",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [],
 				"notes": [],
 				"seeAlso": []
@@ -1108,6 +1209,12 @@ var testCases = [
 				"shortTitle": "Физическая химия",
 				"url": "https://search.rsl.ru/ru/record/01004080147",
 				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					},
 					{
 						"linkMode": "linked_url",
 						"title": "E-resource",
@@ -1167,7 +1274,14 @@ var testCases = [
 				"place": "Москва",
 				"publisher": "Российская академия наук",
 				"url": "https://search.rsl.ru/ru/record/01002386114",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Химические науки -- Физическая химия. Химическая физика -- Общий раздел -- Периодические и продолжающиеся издания"
@@ -1224,7 +1338,14 @@ var testCases = [
 				"place": "Москва",
 				"publisher": "Российская академия наук",
 				"url": "https://search.rsl.ru/ru/record/07000380351",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [],
 				"notes": [
 					{
@@ -1259,7 +1380,14 @@ var testCases = [
 				"place": "Санкт-Петербург",
 				"shortTitle": "Стабильные жидкие углеводороды. Определение ванадия, никеля, алюминия, мышьяка, меди, железа, натрия и свинца спектральными методами",
 				"url": "https://search.rsl.ru/ru/record/01010153224",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Горное дело -- Разработка нефтяных и газовых месторождений -- Исследование -- Стандарты"
@@ -1296,7 +1424,14 @@ var testCases = [
 				"place": "Москва",
 				"shortTitle": "ГОСТ IEC 61010-1-2014. Безопасность электрических контрольно-измерительных приборов и лабораторного оборудования =",
 				"url": "https://search.rsl.ru/ru/record/01008033518",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "аналитическая химия"
@@ -1357,7 +1492,14 @@ var testCases = [
 				"series": "Orangевый гид",
 				"shortTitle": "Индия",
 				"url": "https://search.rsl.ru/ru/record/01010285501",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Литература универсального содержания -- Справочные издания -- Страноведческие справочники. Путеводители. Адресные книги. Адрес-календари -- Отдельные зарубежные страны -- Азия -- Индия"
@@ -1399,7 +1541,14 @@ var testCases = [
 				"place": "Москва",
 				"shortTitle": "Реакция Дильса-Альдера при деформации органических веществ под давлением",
 				"url": "https://search.rsl.ru/ru/record/01008937943",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Органическая химия"
@@ -1435,6 +1584,12 @@ var testCases = [
 				"shortTitle": "Влияние природы кислотного катализатора на селективность и кинетические характеристики гидратации камфена и α-пинена",
 				"url": "https://search.rsl.ru/ru/record/01000287561",
 				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					},
 					{
 						"linkMode": "linked_url",
 						"title": "E-resource",
@@ -1484,7 +1639,14 @@ var testCases = [
 				"publisher": "Лань",
 				"shortTitle": "Основы общей химии",
 				"url": "https://search.rsl.ru/ru/record/01002444380",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Химические науки -- Общая и неорганическая химия -- Учебник для высшей школы"
@@ -1537,7 +1699,14 @@ var testCases = [
 				"place": "Москва",
 				"publisher": "Российская академия наук",
 				"url": "https://search.rsl.ru/ru/record/01002386114",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Химические науки -- Физическая химия. Химическая физика -- Общий раздел -- Периодические и продолжающиеся издания"
@@ -1565,7 +1734,14 @@ var testCases = [
 				"language": "rus",
 				"libraryCatalog": "Российская Государственная Библиотека",
 				"url": "https://search.rsl.ru/ru/record/07000380352",
-				"attachments": [],
+				"attachments": [
+					{
+						"linkMode": "linked_url",
+						"title": "via search",
+						"snapshot": false,
+						"contentType": "text/html"
+					}
+				],
 				"tags": [],
 				"notes": [],
 				"seeAlso": []
