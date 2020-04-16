@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-15 17:46:08"
+	"lastUpdated": "2020-04-16 18:34:37"
 }
 
 /*
@@ -44,7 +44,8 @@
 
 
 const filters = {
-	metadataTableCSS: 'div#tab-content2-low > div.document > table.status'
+	metadataTableCSS: "div#tab-content2-low > div.document > table.status",
+	pdfKeyScriptCSS: "div#page-wrapper > script:nth-child(2)"
 };
 
 const keywords = {
@@ -113,6 +114,7 @@ function detectWeb(doc, url) {
 	}
 	
 	if (pathname.match(recordPattern)) {
+		metadata.CNTDID = pathname.match(recordPattern)[1];
 		parseMetadata(doc, url);
 		return metadata.itemType;
 	}
@@ -122,10 +124,6 @@ function detectWeb(doc, url) {
 
 
 function doWeb(doc, url) {
-	let domain = url.match(/^https?:\/\/([^/]+)/)[1];
-	let pathname = doc.location.pathname;
-	let recordPattern = /^\/document\/([0-9]+)/;
-
 	if (detectWeb(doc, url) == 'multiple') {
 		let searchResult = getSearchResults(doc, url);
 		Zotero.selectItems(searchResult,
@@ -137,7 +135,6 @@ function doWeb(doc, url) {
 		);
 	}
 	else {
-		metadata.CNTDID = pathname.match(recordPattern)[1];
 		scrape(doc, url);
 	}
 }
@@ -150,43 +147,70 @@ function getSearchResults(doc, url) {
 
 
 function scrape(doc, url) {
-	let extra = [];
-	let zItem = new Zotero.Item(metadata.itemType);
-	let creator = {fieldMode: false, firstName: "", lastName: "", creatorType: "author"};
-	creator.firstName = metadata.legislativeBody
-	zItem.creators.push(creator);
-
-	zItem.title = metadata.title;
-	zItem.url = url;
-	zItem.language = 'Russian';
-	zItem.date = metadata.dateAmended ? metadata.dateAmended : metadata.dateEnacted;
-
-	switch (metadata.type) {
-		case 'code':
-			zItem.publicLawNumber = metadata.publicLawNumber;
-			zItem.codeNumber = metadata.codeNumber;
-			if (metadata.code) zItem.code = metadata.code;
-			if (metadata.section) zItem.section = metadata.section;
-			break;
-		case 'standard':
-			zItem.reportType = metadata.codeNumber;
-			zItem.reportNumber = metadata.publicLawNumber;
-			zItem.title = zItem.title.replace(metadata.codeNumber + ' '
-				+ metadata.publicLawNumber + ' ', ''); 
+	// ----------------------------- Activate PDF ---------------------------- //
+	if (metadata.pdfKey) {
+		postUrl = 'http://docs.cntd.ru/pdf/get/';
+		postData = 'id=' + metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
+		ZU.doPost(postUrl, postData, scrapeCallback(doc, url));
 	}
-	
-	// Extra
-	extra.push('CNTDID: ' + metadata.CNTDID);
-	extra.push('Published: ' + metadata.published);
-	extra.push('dateEnactedOriginal: ' + metadata.dateEnacted);
-	if (metadata.dateApproved) extra.push('dateApproved: ' + metadata.dateApproved);
-	if (metadata.dateRevoked) extra.push('dateRevoked: ' + metadata.dateRevoked);
-	zItem.extra = extra.join('\n');
-	
-	if (metadata.legalStatus != keywords.activeLaw) zItem.tags.push('Inactive');
-	if (metadata.dateRevoked) zItem.tags.push('Revoked');
+	else {
+		scrapeCallback(doc, url)('', {});
+	}
+	// ============================= Activate PDF ============================ //
+}
 
-	zItem.complete();
+
+function scrapeCallback(doc, url) {
+	function callback(responseText, xmlhttp) {
+		if (responseText == '{"status":"ready"}') metadata.pdfAvailable = true;
+
+		let extra = [];
+		let zItem = new Zotero.Item(metadata.itemType);
+		let creator = {fieldMode: 1, firstName: "", lastName: "", creatorType: "author"};
+		creator.lastName = metadata.legislativeBody
+		zItem.creators.push(creator);
+	
+		zItem.title = metadata.title;
+		zItem.url = url;
+		zItem.language = 'Russian';
+		zItem.date = metadata.dateAmended ? metadata.dateAmended : metadata.dateEnacted;
+	
+		switch (metadata.type) {
+			case 'code':
+				zItem.publicLawNumber = metadata.publicLawNumber;
+				zItem.codeNumber = metadata.codeNumber;
+				if (metadata.code) zItem.code = metadata.code;
+				if (metadata.section) zItem.section = metadata.section;
+				break;
+			case 'standard':
+				zItem.reportType = metadata.codeNumber;
+				zItem.reportNumber = metadata.publicLawNumber;
+				zItem.title = zItem.title.replace(metadata.codeNumber + ' '
+					+ metadata.publicLawNumber + ' ', ''); 
+		}
+		
+		// Extra
+		extra.push('CNTDID: ' + metadata.CNTDID);
+		if (metadata.published) extra.push('Published: ' + metadata.published);
+		extra.push('dateEnactedOriginal: ' + metadata.dateEnacted);
+		if (metadata.dateApproved) extra.push('dateApproved: ' + metadata.dateApproved);
+		if (metadata.dateRevoked) extra.push('dateRevoked: ' + metadata.dateRevoked);
+		zItem.extra = extra.join('\n');
+		
+		if (metadata.legalStatus != keywords.activeLaw) zItem.tags.push('Inactive');
+		if (metadata.dateRevoked) zItem.tags.push('Revoked');
+
+		if (metadata.pdfAvailable) {
+			zItem.attachments.push({
+				title: "Full Text PDF",
+				url: metadata.pdfURL,
+				mimeType: "application/pdf"
+			});
+		}
+		
+		zItem.complete();
+	}
+	return callback;
 }
 
 
@@ -203,9 +227,10 @@ function parseMetadata(doc, url) {
 	for (irow = 0; irow < descTableRows.length; irow++) {
 		let rowCells = descTableRows[irow].cells;
 		if (rowCells.length == 0) continue;
-		metadata[fieldMap[rowCells[0].innerText.trim().slice(0, -1)]] = rowCells[1].innerText.trim();
+		metadata[fieldMap[rowCells[0].innerText
+			.trim().slice(0, -1)]] = rowCells[1].innerText.trim();
 	}
-	
+
 	// ---------------- Determine subtype and adjust metadata ---------------- //
 
 	// Keyword for codes needs to be extracted from the document type field
@@ -215,24 +240,37 @@ function parseMetadata(doc, url) {
 		metadata.customType = true;
 		metadata.type = docT.type;
 		metadata.itemType = docT.itemType;
-	}
-	if (docT.type == 'code') {
-		metadata.codeNumber = metadata.codeNumber.match(/^[^\n]+[\n\t]+([^\n]+)/)[1].trim();
-		let codeTitle = metadata.title;
-		let icutoff = codeTitle.indexOf(keywords.codeAmendments);
-		if (icutoff == -1) icutoff = codeTitle.indexOf(keywords.codeVersion);
-		if (icutoff != -1) codeTitle = codeTitle.slice(0, icutoff).trim();
-		isplit = codeTitle.indexOf('('); 
-		if (isplit != -1) {
-			metadata.section = codeTitle.slice(isplit).trim().slice(1, -1).replace(') (', '; ');
-			metadata.code = codeTitle.slice(0, isplit).trim();
+
+		if (docT.type == 'code') {
+			metadata.codeNumber = metadata.codeNumber.match(/^[^\n]+[\n\t]+([^\n]+)/)[1].trim();
+			let codeTitle = metadata.title;
+			let icutoff = codeTitle.indexOf(keywords.codeAmendments);
+			if (icutoff == -1) icutoff = codeTitle.indexOf(keywords.codeVersion);
+			if (icutoff != -1) codeTitle = codeTitle.slice(0, icutoff).trim();
+			isplit = codeTitle.indexOf('('); 
+			if (isplit != -1) {
+				metadata.section = codeTitle.slice(isplit).trim().slice(1, -1).replace(') (', '; ');
+				metadata.code = codeTitle.slice(0, isplit).trim();
+			}
 		}
+	}
+	else {
+		metadata.itemType = 'statute';
 	}
 	
 	// ================ Determine subtype and adjust metadata ================ //
+
+	// Extract pdf key
+	let pdfKey = doc.querySelector(filters.pdfKeyScriptCSS);
+	if (pdfKey) {
+		pdfKey = pdfKey.innerText.match(/^[^']+'([A-Za-z0-9]+)/)[1];
+		metadata.pdfKey = pdfKey;
+		metadata.pdfURL = 'http://docs.cntd.ru/pdf/get/id/'
+			+ metadata.CNTDID + '/key/' + pdfKey + '/file/1';
+	}
 	
 	// Replace separator when multiple publication sources are provided
-	metadata.published = metadata.published.replace(/[\t\n]+/g, '| ');
+	if (metadata.published) metadata.published = metadata.published.replace(/[\t\n]+/g, '| ');
 	
 	// Parse dates with Russian month names
 	if (metadata.dateApproved) metadata.dateApproved = parseDate(metadata.dateApproved);
@@ -240,6 +278,7 @@ function parseMetadata(doc, url) {
 	if (metadata.dateAmended) metadata.dateAmended = parseDate(metadata.dateAmended);
 	if (metadata.dateRevoked) metadata.dateRevoked = parseDate(metadata.dateRevoked);
 }
+
 
 /**
  *	Parses date in Russian
@@ -458,6 +497,98 @@ var testCases = [
 				"url": "http://docs.cntd.ru/document/1200003915",
 				"attachments": [],
 				"tags": [],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://docs.cntd.ru/document/564602190",
+		"items": [
+			{
+				"itemType": "statute",
+				"nameOfAct": "Изменение 400/2020 ОКАТО Общероссийский классификатор объектов административно-территориального деления ОК 019-95",
+				"creators": [
+					{
+						"fieldMode": false,
+						"firstName": "Росстандарт",
+						"lastName": "",
+						"creatorType": "author"
+					}
+				],
+				"dateEnacted": "4/01/2020",
+				"extra": "CNTDID: 564602190\nPublished: undefined\ndateEnactedOriginal: 4/01/2020\ndateApproved: 3/13/2020",
+				"language": "Russian",
+				"url": "http://docs.cntd.ru/document/564602190",
+				"attachments": [],
+				"tags": [],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://docs.cntd.ru/document/437253093",
+		"items": [
+			{
+				"itemType": "report",
+				"title": "Дороги автомобильные общего пользования. Смеси литые асфальтобетонные дорожные горячие и асфальтобетон литой дорожный. Методы испытаний",
+				"creators": [
+					{
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Росстандарт",
+						"creatorType": "author"
+					}
+				],
+				"date": "6/01/2020",
+				"extra": "CNTDID: 437253093\ndateEnactedOriginal: 6/01/2020\ndateApproved: 3/27/2020",
+				"language": "Russian",
+				"libraryCatalog": "a a CNTD.ru",
+				"reportNumber": "54400-2020",
+				"reportType": "ГОСТ Р",
+				"url": "http://docs.cntd.ru/document/437253093",
+				"attachments": [],
+				"tags": [
+					{
+						"tag": "Inactive"
+					}
+				],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://docs.cntd.ru/document/1200170667",
+		"items": [
+			{
+				"itemType": "report",
+				"title": "Параметры и критерии оценки качества вождения с целью оценки безопасности использования транспортных средств",
+				"creators": [
+					{
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Росстандарт",
+						"creatorType": "author"
+					}
+				],
+				"date": "6/01/2020",
+				"extra": "CNTDID: 1200170667\nPublished: Официальное издание. М.: Стандартинформ, 2020\ndateEnactedOriginal: 6/01/2020\ndateApproved: 12/25/2019",
+				"language": "Russian",
+				"libraryCatalog": "a a CNTD.ru",
+				"reportNumber": "58782-2019",
+				"reportType": "ГОСТ Р",
+				"url": "http://docs.cntd.ru/document/1200170667",
+				"attachments": [],
+				"tags": [
+					{
+						"tag": "Inactive"
+					}
+				],
 				"notes": [],
 				"seeAlso": []
 			}
