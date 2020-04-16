@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-16 18:34:37"
+	"lastUpdated": "2020-04-16 22:58:14"
 }
 
 /*
@@ -54,14 +54,19 @@ const keywords = {
 	codeVersion: "(редакция"
 };
 
+const pdfStatus = {
+// {"status":"inprocess","percent":100}
+	'{"status":"ready"}': 1
+};
+
 // Holds extracted metadata
 var metadata = {};
 
 var fieldMap = {
 	"Название документа": "title",
-	"Номер документа": "publicLawNumber",
-	"Вид документа": "codeNumber",
-	"Принявший орган": "legislativeBody",
+	"Номер документа": "publicDocNumber",
+	"Вид документа": "docType",
+	"Принявший орган": "authority",
 	Статус: "legalStatus",
 	Опубликован: "published",
 	"Дата принятия": "dateApproved",
@@ -70,13 +75,38 @@ var fieldMap = {
 	"Дата окончания действия": "dateRevoked"
 };
 
-const documentTypes = {
-	ГОСТ: { type:"standard", itemType: "report", short: "ГОСТ", abbr: "ГОСТ" },
-	"ГОСТ Р": { type:"standard", itemType: "report", short: "ГОСТ Р", abbr: "ГОСТ Р" }, 
-	"Указ Президента РФ": { type:"order", itemType: "statute", short: "Указ", abbr: "Указ" },
-	"Федеральный закон": { type:"federalLaw", itemType: "statute", short: "Федеральный закон", abbr: "ФЗ" },
-	"Кодекс РФ": { type:"code", itemType: "statute", short: "Кодекс РФ", abbr: "Кодекс РФ" }
+/* 
+	Custom document types
+	Each custom type consists of:
+		key:		user facing original type name
+		"type": 	specific subtype that could be used for coding purposes
+		"itemType": zotero item type
+		"short":	user facing shortened type name
+		"abbr":		user facing type name abbreviation
+		"tags":		tags to be added
+*/
+const docTypes = {
+	ГОСТ: { type: "standard", itemType: "report", short: "ГОСТ", abbr: "ГОСТ", tags: ['standard', 'GOST'] },
+	"ГОСТ Р": { type: "standard", itemType: "report", short: "ГОСТ Р", abbr: "ГОСТ Р", tags: ['standard', 'GOST'] }, 
+	"Указ Президента РФ": { type: "order", itemType: "statute", short: "Указ", abbr: "Указ" },
+	"Федеральный закон": { type: "federalLaw", itemType: "statute", short: "Федеральный закон", abbr: "ФЗ" },
+	"Кодекс РФ": { type: "code", itemType: "statute", short: "Кодекс РФ", abbr: "Кодекс РФ", tags: ['code'] },
+	"Государственная поверочная схема": { type: "statute", itemType: "statute",
+		short: "Государственная поверочная схема", abbr: "ГПС"},
+	Изменение: { type: "statute", itemType: "statute", short: "Изменение", abbr: "Изменение"},
+	"Statute": { type: "statute", itemType: "statute", short: "Statute", abbr: "statute"}
 };
+
+/*
+	There are records with no document type defined. When such a type can be
+	defined based on document title, an array element is added here, which is an
+	arrayed pair of "pattern" to be matched against the title and "custom type".
+	Additionaly, a corresponding descriptor is added to "docTypes".
+*/
+const docTypePatterns = [
+	[ /^Государственная поверочная схема для/, "Государственная поверочная схема"]
+];
+
 
 const legislativeBodies = [
 	"Росстандарт",
@@ -118,7 +148,7 @@ function detectWeb(doc, url) {
 		parseMetadata(doc, url);
 		return metadata.itemType;
 	}
-
+	
 	return false;
 }
 
@@ -149,6 +179,7 @@ function getSearchResults(doc, url) {
 function scrape(doc, url) {
 	// ----------------------------- Activate PDF ---------------------------- //
 	if (metadata.pdfKey) {
+		waitforPDF(doc, url);
 		postUrl = 'http://docs.cntd.ru/pdf/get/';
 		postData = 'id=' + metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
 		ZU.doPost(postUrl, postData, scrapeCallback(doc, url));
@@ -160,6 +191,18 @@ function scrape(doc, url) {
 }
 
 
+function waitforPDF(doc, url) {
+	getURL = 'http://docs.cntd.ru/pdf/get/?id='
+		+ metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
+	ZU.doGet(getURL, checkforPDF);
+}
+
+
+function checkforPDF(responseText, xmlhttp, url) {
+	Z.debug(responseText);
+}
+
+
 function scrapeCallback(doc, url) {
 	function callback(responseText, xmlhttp) {
 		if (responseText == '{"status":"ready"}') metadata.pdfAvailable = true;
@@ -167,26 +210,33 @@ function scrapeCallback(doc, url) {
 		let extra = [];
 		let zItem = new Zotero.Item(metadata.itemType);
 		let creator = {fieldMode: 1, firstName: "", lastName: "", creatorType: "author"};
-		creator.lastName = metadata.legislativeBody
+		creator.lastName = metadata.authority
 		zItem.creators.push(creator);
 	
 		zItem.title = metadata.title;
 		zItem.url = url;
 		zItem.language = 'Russian';
+		// For statute, the date/dateEncated field is set to the last amendment
+		// date. Original enactment date is stored in the extra field.
 		zItem.date = metadata.dateAmended ? metadata.dateAmended : metadata.dateEnacted;
 	
+		switch (metadata.itemType) {
+			case 'statute':
+				zItem.codeNumber = metadata.subType;
+				zItem.publicLawNumber = metadata.publicDocNumber;
+				break;
+			case 'report':
+				zItem.reportType = metadata.subType;
+				zItem.reportNumber = metadata.publicDocNumber;
+				zItem.title = zItem.title.replace(metadata.subType + ' '
+					+ metadata.publicDocNumber + ' ', ''); 
+		}
+
 		switch (metadata.type) {
 			case 'code':
-				zItem.publicLawNumber = metadata.publicLawNumber;
-				zItem.codeNumber = metadata.codeNumber;
+				zItem.codeNumber = metadata.docType;
 				if (metadata.code) zItem.code = metadata.code;
 				if (metadata.section) zItem.section = metadata.section;
-				break;
-			case 'standard':
-				zItem.reportType = metadata.codeNumber;
-				zItem.reportNumber = metadata.publicLawNumber;
-				zItem.title = zItem.title.replace(metadata.codeNumber + ' '
-					+ metadata.publicLawNumber + ' ', ''); 
 		}
 		
 		// Extra
@@ -197,6 +247,7 @@ function scrapeCallback(doc, url) {
 		if (metadata.dateRevoked) extra.push('dateRevoked: ' + metadata.dateRevoked);
 		zItem.extra = extra.join('\n');
 		
+		if (metadata.tags) zItem.tags.push(...metadata.tags);
 		if (metadata.legalStatus != keywords.activeLaw) zItem.tags.push('Inactive');
 		if (metadata.dateRevoked) zItem.tags.push('Revoked');
 
@@ -233,16 +284,33 @@ function parseMetadata(doc, url) {
 
 	// ---------------- Determine subtype and adjust metadata ---------------- //
 
-	// Keyword for codes needs to be extracted from the document type field
-	let codeNumber = metadata.codeNumber.match(/^[^\n]+/)[0].trim();
-	let docT = documentTypes[codeNumber];
-	if (docT) {
-		metadata.customType = true;
-		metadata.type = docT.type;
-		metadata.itemType = docT.itemType;
+	if (!metadata.docType) {
+		let title = metadata.title;
+		for (let pattern of docTypePatterns) {
+			if (title.match(pattern[0])) {
+				metadata.docType = pattern[1];
+				break;
+			}
+		}
+	}
 
-		if (docT.type == 'code') {
-			metadata.codeNumber = metadata.codeNumber.match(/^[^\n]+[\n\t]+([^\n]+)/)[1].trim();
+	// ---------------------------- Default values --------------------------- //
+	if (!metadata.docType) metadata.docType = 'Statute';
+	metadata.subType = 'statute';
+	metadata.type = 'statute';
+	metadata.itemType = 'statute';
+	// ============================ Default values =========================== //
+
+	// Keyword for codes needs to be extracted from the document type field
+	let subType = metadata.docType.match(/^[^\n]+/)[0].trim();
+	let subT = docTypes[subType];
+	if (subT) {
+		metadata.subType = subType;
+		metadata.type = subT.type;
+		metadata.itemType = subT.itemType;
+		metadata.tags = subT.tags;
+		if (subT.type == 'code') {
+			metadata.docType = metadata.docType.match(/^[^\n]+[\n\t]+([^\n]+)/)[1].trim();
 			let codeTitle = metadata.title;
 			let icutoff = codeTitle.indexOf(keywords.codeAmendments);
 			if (icutoff == -1) icutoff = codeTitle.indexOf(keywords.codeVersion);
@@ -252,12 +320,12 @@ function parseMetadata(doc, url) {
 				metadata.section = codeTitle.slice(isplit).trim().slice(1, -1).replace(') (', '; ');
 				metadata.code = codeTitle.slice(0, isplit).trim();
 			}
+			else {
+				metadata.code = codeTitle;
+			}
 		}
 	}
-	else {
-		metadata.itemType = 'statute';
-	}
-	
+
 	// ================ Determine subtype and adjust metadata ================ //
 
 	// Extract pdf key
@@ -305,22 +373,29 @@ var testCases = [
 		"url": "http://docs.cntd.ru/document/1200128307",
 		"items": [
 			{
-				"itemType": "statute",
-				"nameOfAct": "ГОСТ 1.0-2015 Межгосударственная система стандартизации (МГСС). Основные положения (Переиздание)",
+				"itemType": "report",
+				"title": "Межгосударственная система стандартизации (МГСС). Основные положения (Переиздание)",
 				"creators": [
 					{
-						"fieldMode": false,
-						"firstName": "Росстандарт",
-						"lastName": "",
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Росстандарт",
 						"creatorType": "author"
 					}
 				],
-				"dateEnacted": "7/01/2016",
-				"codeNumber": "ГОСТ",
-				"extra": "CNTDID: 1200128307\nPublished: Официальное издание. М.: Стандартинформ, 2019 год\ndateApproved: 12/11/2015",
-				"publicLawNumber": "1.0-2015",
+				"date": "10/01/2019",
+				"extra": "CNTDID: 1200128307\nPublished: Официальное издание. М.: Стандартинформ, 2019 год\ndateEnactedOriginal: 7/01/2016\ndateApproved: 12/11/2015",
+				"language": "Russian",
+				"libraryCatalog": "a a CNTD.ru",
+				"reportNumber": "1.0-2015",
+				"reportType": "ГОСТ",
 				"url": "http://docs.cntd.ru/document/1200128307",
-				"attachments": [],
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
 				"tags": [],
 				"notes": [],
 				"seeAlso": []
@@ -336,16 +411,15 @@ var testCases = [
 				"nameOfAct": "О внесении изменений в Указ Президента Российской Федерации от 16 июля 2004 года N 910 \"О мерах по совершенствованию государственного управления\" (утратил силу с 04.04.2006 на основании Указа Президента РФ от 30.03.2006 N 285)",
 				"creators": [
 					{
-						"fieldMode": false,
-						"firstName": "Президент РФ",
-						"lastName": "",
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Президент РФ",
 						"creatorType": "author"
 					}
 				],
 				"dateEnacted": "4/26/2005",
-				"codeNumber": "Указ Президента РФ",
-				"extra": "CNTDID: 901932011\nPublished: Собрание законодательства Российской Федерации, N 18, 02.05.2005, ст.1665\ndateApproved: 4/26/2005\ndateRevoked: 4/04/2006",
-				"publicLawNumber": "473",
+				"extra": "CNTDID: 901932011\nPublished: Собрание законодательства Российской Федерации, N 18, 02.05.2005, ст.1665\ndateEnactedOriginal: 4/26/2005\ndateApproved: 4/26/2005\ndateRevoked: 4/04/2006",
+				"language": "Russian",
 				"url": "http://docs.cntd.ru/document/901932011",
 				"attachments": [],
 				"tags": [
@@ -370,18 +444,22 @@ var testCases = [
 				"nameOfAct": "О награждении государственными наградами Российской Федерации работников государственного унитарного предприятия \"Московский метрополитен\"",
 				"creators": [
 					{
-						"fieldMode": false,
-						"firstName": "Президент РФ",
-						"lastName": "",
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Президент РФ",
 						"creatorType": "author"
 					}
 				],
 				"dateEnacted": "4/25/2005",
-				"codeNumber": "Указ Президента РФ",
-				"extra": "CNTDID: 901931853\nPublished: Собрание законодательства Российской Федерации, N 18, 02.05.2005\ndateApproved: 4/25/2005",
-				"publicLawNumber": "472",
+				"extra": "CNTDID: 901931853\nPublished: Собрание законодательства Российской Федерации, N 18, 02.05.2005\ndateEnactedOriginal: 4/25/2005\ndateApproved: 4/25/2005",
+				"language": "Russian",
 				"url": "http://docs.cntd.ru/document/901931853",
-				"attachments": [],
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
 				"tags": [],
 				"notes": [],
 				"seeAlso": []
@@ -393,22 +471,29 @@ var testCases = [
 		"url": "http://docs.cntd.ru/document/1200102193",
 		"items": [
 			{
-				"itemType": "statute",
-				"nameOfAct": "ГОСТ Р 1.0-2012 Стандартизация в Российской Федерации. Основные положения (с Изменением N 1)",
+				"itemType": "report",
+				"title": "Стандартизация в Российской Федерации. Основные положения (с Изменением N 1)",
 				"creators": [
 					{
-						"fieldMode": false,
-						"firstName": "Росстандарт",
-						"lastName": "",
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Росстандарт",
 						"creatorType": "author"
 					}
 				],
-				"dateEnacted": "7/01/2013",
-				"codeNumber": "ГОСТ Р",
-				"extra": "CNTDID: 1200102193\nPublished: официальное издание\t\t\t\t\t\t\t\t\t\t\tМ.: Стандартинформ, 2013 год\ndateApproved: 11/23/2012",
-				"publicLawNumber": "1.0-2012",
+				"date": "11/22/2013",
+				"extra": "CNTDID: 1200102193\nPublished: официальное издание| М.: Стандартинформ, 2013 год\ndateEnactedOriginal: 7/01/2013\ndateApproved: 11/23/2012",
+				"language": "Russian",
+				"libraryCatalog": "a a CNTD.ru",
+				"reportNumber": "1.0-2012",
+				"reportType": "ГОСТ Р",
 				"url": "http://docs.cntd.ru/document/1200102193",
-				"attachments": [],
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
 				"tags": [],
 				"notes": [],
 				"seeAlso": []
@@ -424,20 +509,22 @@ var testCases = [
 				"nameOfAct": "О государственном регулировании обеспечения плодородия земель сельскохозяйственного назначения (с изменениями на 5 апреля 2016 года) (редакция, действующая с 1 июля 2016 года)",
 				"creators": [
 					{
-						"fieldMode": false,
-						"firstName": "Государственная Дума",
-						"lastName": "",
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Государственная Дума",
 						"creatorType": "author"
 					}
 				],
 				"dateEnacted": "4/05/2016",
-				"codeNumber": "Федеральный закон",
-				"extra": "CNTDID: 901712929\nPublished: Собрание законодательства Российской Федерации, N 29, 20.07.98, ст.3399\t\t\t\t\t\t\t\t\t\t\tВедомости Федерального Собрания, N 22, 01.08.98\ndateApproved: 7/16/1998",
-				"history": "dateEnactedOriginal: undefined",
+				"extra": "CNTDID: 901712929\nPublished: Собрание законодательства Российской Федерации, N 29, 20.07.98, ст.3399| Ведомости Федерального Собрания, N 22, 01.08.98\ndateEnactedOriginal: undefined\ndateApproved: 7/16/1998",
 				"language": "Russian",
-				"publicLawNumber": "101-ФЗ",
 				"url": "http://docs.cntd.ru/document/901712929",
-				"attachments": [],
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
 				"tags": [],
 				"notes": [],
 				"seeAlso": []
@@ -453,20 +540,24 @@ var testCases = [
 				"nameOfAct": "Гражданский процессуальный кодекс Российской Федерации (с изменениями на 2 декабря 2019 года) (редакция, действующая с 30 марта 2020 года)",
 				"creators": [
 					{
-						"fieldMode": false,
-						"firstName": "Государственная Дума",
-						"lastName": "",
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Государственная Дума",
 						"creatorType": "author"
 					}
 				],
 				"dateEnacted": "12/02/2019",
-				"codeNumber": "Кодекс РФ\n\nФедеральный закон",
-				"extra": "CNTDID: 901832805\nPublished: Российская газета, N 220, 20.11.2002| Парламентская газета, N 220-221, 20.11.2002| Собрание законодательства Российской Федерации, N 46, 18.11.2002, ст.4532| Приложение к \"Российской газете\", N 46, 2002 год| Ведомости Федерального Собрания РФ, N 33, 21.11.2002\ndateApproved: 11/14/2002",
-				"history": "dateEnactedOriginal: 2/01/2003",
+				"codeNumber": "Кодекс РФ",
+				"extra": "CNTDID: 901832805\nPublished: Российская газета, N 220, 20.11.2002| Парламентская газета, N 220-221, 20.11.2002| Собрание законодательства Российской Федерации, N 46, 18.11.2002, ст.4532| Приложение к \"Российской газете\", N 46, 2002 год| Ведомости Федерального Собрания РФ, N 33, 21.11.2002\ndateEnactedOriginal: 2/01/2003\ndateApproved: 11/14/2002",
 				"language": "Russian",
 				"publicLawNumber": "138-ФЗ",
 				"url": "http://docs.cntd.ru/document/901832805",
-				"attachments": [],
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
 				"tags": [],
 				"notes": [],
 				"seeAlso": []
@@ -479,12 +570,12 @@ var testCases = [
 		"items": [
 			{
 				"itemType": "report",
-				"title": "ГОСТ 11371-78 Шайбы. Технические условия (с Изменениями N 1, 2, 3)",
+				"title": "Шайбы. Технические условия (с Изменениями N 1, 2, 3)",
 				"creators": [
 					{
-						"fieldMode": false,
-						"firstName": "Госстандарт СССР",
-						"lastName": "",
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Госстандарт СССР",
 						"creatorType": "author"
 					}
 				],
@@ -495,7 +586,12 @@ var testCases = [
 				"reportNumber": "11371-78",
 				"reportType": "ГОСТ",
 				"url": "http://docs.cntd.ru/document/1200003915",
-				"attachments": [],
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
 				"tags": [],
 				"notes": [],
 				"seeAlso": []
@@ -511,17 +607,22 @@ var testCases = [
 				"nameOfAct": "Изменение 400/2020 ОКАТО Общероссийский классификатор объектов административно-территориального деления ОК 019-95",
 				"creators": [
 					{
-						"fieldMode": false,
-						"firstName": "Росстандарт",
-						"lastName": "",
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Росстандарт",
 						"creatorType": "author"
 					}
 				],
 				"dateEnacted": "4/01/2020",
-				"extra": "CNTDID: 564602190\nPublished: undefined\ndateEnactedOriginal: 4/01/2020\ndateApproved: 3/13/2020",
+				"extra": "CNTDID: 564602190\ndateEnactedOriginal: 4/01/2020\ndateApproved: 3/13/2020",
 				"language": "Russian",
 				"url": "http://docs.cntd.ru/document/564602190",
-				"attachments": [],
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
 				"tags": [],
 				"notes": [],
 				"seeAlso": []
@@ -589,6 +690,32 @@ var testCases = [
 						"tag": "Inactive"
 					}
 				],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://docs.cntd.ru/document/563813381",
+		"items": [
+			{
+				"itemType": "statute",
+				"nameOfAct": "Государственная поверочная схема для средств измерений содержания неорганических компонентов в водных растворах",
+				"creators": [
+					{
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Ростехнадзор",
+						"creatorType": "author"
+					}
+				],
+				"dateEnacted": "1/01/2020",
+				"extra": "CNTDID: 563813381\nPublished: Официальный сайт Росстандарта www.gost.ru по состоянию на 21.11.2019\ndateEnactedOriginal: 1/01/2020\ndateApproved: 11/01/2019",
+				"language": "Russian",
+				"url": "http://docs.cntd.ru/document/563813381",
+				"attachments": [],
+				"tags": [],
 				"notes": [],
 				"seeAlso": []
 			}
