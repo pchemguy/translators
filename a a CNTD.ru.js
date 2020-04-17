@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-17 10:34:29"
+	"lastUpdated": "2020-04-17 12:16:11"
 }
 
 /*
@@ -45,7 +45,8 @@
 
 const filters = {
 	metadataTableCSS: "div#tab-content2-low > div.document > table.status",
-	pdfKeyScriptCSS: "div#page-wrapper > script:nth-child(2)"
+	pdfKeyScriptCSS: "div#page-wrapper > script:nth-child(2)",
+	searchResultCSS: "div#tab-content-search > div.content > ul > li > a"
 };
 
 const keywords = {
@@ -64,7 +65,7 @@ const pdfStatus = {
 
 
 // Holds extracted metadata
-var metadata = {};
+var metadata;
 
 var fieldMap = {
 	"Название документа": "title",
@@ -139,7 +140,7 @@ function addLink(item, title, url) {
 function detectWeb(doc, url) {
 	let domain = url.match(/^https?:\/\/([^/]+)/)[1];
 	let pathname = doc.location.pathname;
-	let searchPattern = '/search/intellectual';
+	let searchPattern = '/search/';
 	let recordPattern = /^\/document\/([0-9]+)/;
 
 	if (pathname.includes(searchPattern)) {
@@ -147,6 +148,7 @@ function detectWeb(doc, url) {
 	}
 	
 	if (pathname.match(recordPattern)) {
+		metadata = {};
 		metadata.CNTDID = pathname.match(recordPattern)[1];
 		parseMetadata(doc, url);
 		return metadata.itemType;
@@ -157,15 +159,18 @@ function detectWeb(doc, url) {
 
 
 function doWeb(doc, url) {
-	if (detectWeb(doc, url) == 'multiple') {
-		let searchResult = getSearchResults(doc, url);
-		Zotero.selectItems(searchResult,
-			function (selectedRecords) {
-				if (selectedRecords) {
-					ZU.processDocuments(Object.keys(selectedRecords), scrape);
+	let detected = detectWeb(doc, url);
+	if (detected == 'multiple') {
+		let searchResult = getSearchResult(doc, url);
+		if (searchResult) {
+			Zotero.selectItems(searchResult,
+				function (selectedRecords) {
+					if (selectedRecords) {
+						ZU.processDocuments(Object.keys(selectedRecords), doWeb);
+					}
 				}
-			}
-		);
+			);
+		}
 	}
 	else {
 		scrape(doc, url);
@@ -173,11 +178,12 @@ function doWeb(doc, url) {
 }
 
 
-function getSearchResults(doc, url) {
-	let searchResult = {};
-	return searchResult;
+function getSearchResult(doc, url) {
+	let records = {};
+	let searchResult = doc.querySelectorAll(filters.searchResultCSS);
+	searchResult.forEach(record => {records[record.href] = record.innerText.trim();});
+	return records;
 }
-
 
 
 /*
@@ -206,7 +212,7 @@ function scrape(doc, url) {
 		ZU.doGet(getURL, checkforPDF);
 	}
 	
-	function checkforPDF(responseText, xmlhttp, url) {
+	function checkforPDF(responseText, xmlhttp, requestURL) {
 		Z.debug('Waiting for pdf ready status: ' + responseText);
 		let status = pdfStatus[responseText.match(/\{"status":"([a-z]+)/)[1]];
 		
@@ -214,6 +220,7 @@ function scrape(doc, url) {
 			case -1:
 				waitCount--;
 				if (waitCount <= 0) {
+					Z.debug('PDF request time out...')
 					scrapeMetadata(doc, url);
 				}
 				else {
