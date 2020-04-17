@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-16 22:58:14"
+	"lastUpdated": "2020-04-17 10:34:29"
 }
 
 /*
@@ -54,10 +54,14 @@ const keywords = {
 	codeVersion: "(редакция"
 };
 
+var waitStep;
+var waitCount;
 const pdfStatus = {
-// {"status":"inprocess","percent":100}
-	'{"status":"ready"}': 1
+	started: -1,
+	inprocess: -1,
+	ready: 1,
 };
+
 
 // Holds extracted metadata
 var metadata = {};
@@ -108,12 +112,11 @@ const docTypePatterns = [
 ];
 
 
-const legislativeBodies = [
+const authorities = [
 	"Росстандарт",
 	"Президент РФ"
 ];
 	
-
 
 /**
  *	Adds link attachment to a Zotero item.
@@ -176,92 +179,112 @@ function getSearchResults(doc, url) {
 }
 
 
+
+/*
+	Checks whether full text pdf is available. If available, sends a request,
+	and waits for the "ready" status. Then calls routine constructing Zotero item.
+	In case of a time out or no pdf, "Zotero item" routine is called.
+*/
 function scrape(doc, url) {
-	// ----------------------------- Activate PDF ---------------------------- //
+	waitStep = 2000;
+	waitCount = 20;
+
 	if (metadata.pdfKey) {
-		waitforPDF(doc, url);
+		Z.debug('Requesting pdf id: ' + metadata.CNTDID + ' key: ' + metadata.pdfKey)
 		postUrl = 'http://docs.cntd.ru/pdf/get/';
 		postData = 'id=' + metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
-		ZU.doPost(postUrl, postData, scrapeCallback(doc, url));
+		ZU.doPost(postUrl, postData, waitforPDF);
 	}
 	else {
-		scrapeCallback(doc, url)('', {});
+		scrapeMetadata(doc, url);
 	}
-	// ============================= Activate PDF ============================ //
-}
-
-
-function waitforPDF(doc, url) {
-	getURL = 'http://docs.cntd.ru/pdf/get/?id='
-		+ metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
-	ZU.doGet(getURL, checkforPDF);
-}
-
-
-function checkforPDF(responseText, xmlhttp, url) {
-	Z.debug(responseText);
-}
-
-
-function scrapeCallback(doc, url) {
-	function callback(responseText, xmlhttp) {
-		if (responseText == '{"status":"ready"}') metadata.pdfAvailable = true;
-
-		let extra = [];
-		let zItem = new Zotero.Item(metadata.itemType);
-		let creator = {fieldMode: 1, firstName: "", lastName: "", creatorType: "author"};
-		creator.lastName = metadata.authority
-		zItem.creators.push(creator);
 	
-		zItem.title = metadata.title;
-		zItem.url = url;
-		zItem.language = 'Russian';
-		// For statute, the date/dateEncated field is set to the last amendment
-		// date. Original enactment date is stored in the extra field.
-		zItem.date = metadata.dateAmended ? metadata.dateAmended : metadata.dateEnacted;
+	function waitforPDF(responseText, xmlhttp) {
+		Z.debug('PDF request response: ' + responseText);
+		getURL = 'http://docs.cntd.ru/pdf/get/?id='
+			+ metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
+		ZU.doGet(getURL, checkforPDF);
+	}
 	
-		switch (metadata.itemType) {
-			case 'statute':
-				zItem.codeNumber = metadata.subType;
-				zItem.publicLawNumber = metadata.publicDocNumber;
+	function checkforPDF(responseText, xmlhttp, url) {
+		Z.debug('Waiting for pdf ready status: ' + responseText);
+		let status = pdfStatus[responseText.match(/\{"status":"([a-z]+)/)[1]];
+		
+		switch (status) {
+			case -1:
+				waitCount--;
+				if (waitCount <= 0) {
+					scrapeMetadata(doc, url);
+				}
+				else {
+					setTimeout(waitforPDF, waitStep, '', {});
+				}
 				break;
-			case 'report':
-				zItem.reportType = metadata.subType;
-				zItem.reportNumber = metadata.publicDocNumber;
-				zItem.title = zItem.title.replace(metadata.subType + ' '
-					+ metadata.publicDocNumber + ' ', ''); 
+			case 1:
+				metadata.pdfAvailable = true;
+				scrapeMetadata(doc, url);
+				break;
+			default:
+				scrapeMetadata(doc, url);
 		}
-
-		switch (metadata.type) {
-			case 'code':
-				zItem.codeNumber = metadata.docType;
-				if (metadata.code) zItem.code = metadata.code;
-				if (metadata.section) zItem.section = metadata.section;
-		}
-		
-		// Extra
-		extra.push('CNTDID: ' + metadata.CNTDID);
-		if (metadata.published) extra.push('Published: ' + metadata.published);
-		extra.push('dateEnactedOriginal: ' + metadata.dateEnacted);
-		if (metadata.dateApproved) extra.push('dateApproved: ' + metadata.dateApproved);
-		if (metadata.dateRevoked) extra.push('dateRevoked: ' + metadata.dateRevoked);
-		zItem.extra = extra.join('\n');
-		
-		if (metadata.tags) zItem.tags.push(...metadata.tags);
-		if (metadata.legalStatus != keywords.activeLaw) zItem.tags.push('Inactive');
-		if (metadata.dateRevoked) zItem.tags.push('Revoked');
-
-		if (metadata.pdfAvailable) {
-			zItem.attachments.push({
-				title: "Full Text PDF",
-				url: metadata.pdfURL,
-				mimeType: "application/pdf"
-			});
-		}
-		
-		zItem.complete();
 	}
-	return callback;
+}
+
+
+function scrapeMetadata(doc, url) {
+	let extra = [];
+	let zItem = new Zotero.Item(metadata.itemType);
+	let creator = {fieldMode: 1, firstName: "", lastName: "", creatorType: "author"};
+	creator.lastName = metadata.authority
+	zItem.creators.push(creator);
+
+	zItem.title = metadata.title;
+	zItem.url = url;
+	zItem.language = 'Russian';
+	// For statute, the date/dateEncated field is set to the last amendment
+	// date. Original enactment date is stored in the extra field.
+	zItem.date = metadata.dateAmended ? metadata.dateAmended : metadata.dateEnacted;
+
+	switch (metadata.itemType) {
+		case 'statute':
+			zItem.codeNumber = metadata.subType;
+			zItem.publicLawNumber = metadata.publicDocNumber;
+			break;
+		case 'report':
+			zItem.reportType = metadata.subType;
+			zItem.reportNumber = metadata.publicDocNumber;
+			zItem.title = zItem.title.replace(metadata.subType + ' '
+				+ metadata.publicDocNumber + ' ', ''); 
+	}
+
+	switch (metadata.type) {
+		case 'code':
+			zItem.codeNumber = metadata.docType;
+			if (metadata.code) zItem.code = metadata.code;
+			if (metadata.section) zItem.section = metadata.section;
+	}
+	
+	// Extra
+	extra.push('CNTDID: ' + metadata.CNTDID);
+	if (metadata.published) extra.push('Published: ' + metadata.published);
+	extra.push('dateEnactedOriginal: ' + metadata.dateEnacted);
+	if (metadata.dateApproved) extra.push('dateApproved: ' + metadata.dateApproved);
+	if (metadata.dateRevoked) extra.push('dateRevoked: ' + metadata.dateRevoked);
+	zItem.extra = extra.join('\n');
+	
+	if (metadata.tags) zItem.tags.push(...metadata.tags);
+	if (metadata.legalStatus != keywords.activeLaw) zItem.tags.push('Inactive');
+	if (metadata.dateRevoked) zItem.tags.push('Revoked');
+
+	if (metadata.pdfAvailable) {
+		zItem.attachments.push({
+			title: "Full Text PDF",
+			url: metadata.pdfURL,
+			mimeType: "application/pdf"
+		});
+	}
+	
+	zItem.complete();
 }
 
 
@@ -396,7 +419,14 @@ var testCases = [
 						"mimeType": "application/pdf"
 					}
 				],
-				"tags": [],
+				"tags": [
+					{
+						"tag": "GOST"
+					},
+					{
+						"tag": "standard"
+					}
+				],
 				"notes": [],
 				"seeAlso": []
 			}
@@ -418,10 +448,17 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "4/26/2005",
+				"codeNumber": "Указ Президента РФ",
 				"extra": "CNTDID: 901932011\nPublished: Собрание законодательства Российской Федерации, N 18, 02.05.2005, ст.1665\ndateEnactedOriginal: 4/26/2005\ndateApproved: 4/26/2005\ndateRevoked: 4/04/2006",
 				"language": "Russian",
+				"publicLawNumber": "473",
 				"url": "http://docs.cntd.ru/document/901932011",
-				"attachments": [],
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
 				"tags": [
 					{
 						"tag": "Inactive"
@@ -451,8 +488,10 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "4/25/2005",
+				"codeNumber": "Указ Президента РФ",
 				"extra": "CNTDID: 901931853\nPublished: Собрание законодательства Российской Федерации, N 18, 02.05.2005\ndateEnactedOriginal: 4/25/2005\ndateApproved: 4/25/2005",
 				"language": "Russian",
+				"publicLawNumber": "472",
 				"url": "http://docs.cntd.ru/document/901931853",
 				"attachments": [
 					{
@@ -494,7 +533,14 @@ var testCases = [
 						"mimeType": "application/pdf"
 					}
 				],
-				"tags": [],
+				"tags": [
+					{
+						"tag": "GOST"
+					},
+					{
+						"tag": "standard"
+					}
+				],
 				"notes": [],
 				"seeAlso": []
 			}
@@ -516,8 +562,10 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "4/05/2016",
+				"codeNumber": "Федеральный закон",
 				"extra": "CNTDID: 901712929\nPublished: Собрание законодательства Российской Федерации, N 29, 20.07.98, ст.3399| Ведомости Федерального Собрания, N 22, 01.08.98\ndateEnactedOriginal: undefined\ndateApproved: 7/16/1998",
 				"language": "Russian",
+				"publicLawNumber": "101-ФЗ",
 				"url": "http://docs.cntd.ru/document/901712929",
 				"attachments": [
 					{
@@ -547,7 +595,8 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "12/02/2019",
-				"codeNumber": "Кодекс РФ",
+				"code": "Гражданский процессуальный кодекс Российской Федерации",
+				"codeNumber": "Федеральный закон",
 				"extra": "CNTDID: 901832805\nPublished: Российская газета, N 220, 20.11.2002| Парламентская газета, N 220-221, 20.11.2002| Собрание законодательства Российской Федерации, N 46, 18.11.2002, ст.4532| Приложение к \"Российской газете\", N 46, 2002 год| Ведомости Федерального Собрания РФ, N 33, 21.11.2002\ndateEnactedOriginal: 2/01/2003\ndateApproved: 11/14/2002",
 				"language": "Russian",
 				"publicLawNumber": "138-ФЗ",
@@ -558,7 +607,11 @@ var testCases = [
 						"mimeType": "application/pdf"
 					}
 				],
-				"tags": [],
+				"tags": [
+					{
+						"tag": "code"
+					}
+				],
 				"notes": [],
 				"seeAlso": []
 			}
@@ -592,7 +645,14 @@ var testCases = [
 						"mimeType": "application/pdf"
 					}
 				],
-				"tags": [],
+				"tags": [
+					{
+						"tag": "GOST"
+					},
+					{
+						"tag": "standard"
+					}
+				],
 				"notes": [],
 				"seeAlso": []
 			}
@@ -614,8 +674,10 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "4/01/2020",
+				"codeNumber": "Изменение",
 				"extra": "CNTDID: 564602190\ndateEnactedOriginal: 4/01/2020\ndateApproved: 3/13/2020",
 				"language": "Russian",
+				"publicLawNumber": "400/2020",
 				"url": "http://docs.cntd.ru/document/564602190",
 				"attachments": [
 					{
@@ -654,7 +716,13 @@ var testCases = [
 				"attachments": [],
 				"tags": [
 					{
+						"tag": "GOST"
+					},
+					{
 						"tag": "Inactive"
+					},
+					{
+						"tag": "standard"
 					}
 				],
 				"notes": [],
@@ -684,10 +752,21 @@ var testCases = [
 				"reportNumber": "58782-2019",
 				"reportType": "ГОСТ Р",
 				"url": "http://docs.cntd.ru/document/1200170667",
-				"attachments": [],
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
 				"tags": [
 					{
+						"tag": "GOST"
+					},
+					{
 						"tag": "Inactive"
+					},
+					{
+						"tag": "standard"
 					}
 				],
 				"notes": [],
@@ -711,10 +790,16 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "1/01/2020",
+				"codeNumber": "Государственная поверочная схема",
 				"extra": "CNTDID: 563813381\nPublished: Официальный сайт Росстандарта www.gost.ru по состоянию на 21.11.2019\ndateEnactedOriginal: 1/01/2020\ndateApproved: 11/01/2019",
 				"language": "Russian",
 				"url": "http://docs.cntd.ru/document/563813381",
-				"attachments": [],
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
 				"tags": [],
 				"notes": [],
 				"seeAlso": []
