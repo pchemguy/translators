@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-17 12:16:11"
+	"lastUpdated": "2020-04-18 02:15:12"
 }
 
 /*
@@ -93,14 +93,25 @@ var fieldMap = {
 const docTypes = {
 	ГОСТ: { type: "standard", itemType: "report", short: "ГОСТ", abbr: "ГОСТ", tags: ['standard', 'GOST'] },
 	"ГОСТ Р": { type: "standard", itemType: "report", short: "ГОСТ Р", abbr: "ГОСТ Р", tags: ['standard', 'GOST'] }, 
-	"Указ Президента РФ": { type: "order", itemType: "statute", short: "Указ", abbr: "Указ" },
+//	"Указ Президента РФ": { type: "order", itemType: "statute", short: "Указ", abbr: "Указ" },
+//	"Приказ Ростехнадзора": { type: "order", itemType: "statute", short: "Приказ", abbr: "Приказ" },
+//	"Постановление Правительства РФ": { type: "statute", itemType: "statute", short: "Постановление", abbr: "Постановление"},
+//	"Распоряжение Правительства РФ": { type: "statute", itemType: "statute", short: "Распоряжение", abbr: "Распоряжение"},
 	"Федеральный закон": { type: "federalLaw", itemType: "statute", short: "Федеральный закон", abbr: "ФЗ" },
 	"Кодекс РФ": { type: "code", itemType: "statute", short: "Кодекс РФ", abbr: "Кодекс РФ", tags: ['code'] },
+	РБ: { type: "statute", itemType: "statute", short: "Руководство по безопасности", abbr: "РБ" },
+	"Технический регламент Таможенного союза":
+		{ type: "statute", itemType: "statute", short: "Технический регламент Таможенного союза", abbr: "ТР ТС"},
 	"Государственная поверочная схема": { type: "statute", itemType: "statute",
 		short: "Государственная поверочная схема", abbr: "ГПС"},
 	Изменение: { type: "statute", itemType: "statute", short: "Изменение", abbr: "Изменение"},
+	"МР (Методические рекомендации)": { type: "statute", itemType: "statute", short: "Методические рекомендации", abbr: "МР"},
+	"Инструкция по промышленной безопасности и охране труда":
+		{ type: "statute", itemType: "statute", short: "ИПБОТ", abbr: "ИПБОТ"},
 	"Statute": { type: "statute", itemType: "statute", short: "Statute", abbr: "statute"}
 };
+
+const legalTypes = [ "Указ", "Приказ", "Постановление", "Распоряжение" ];
 
 /*
 	There are records with no document type defined. When such a type can be
@@ -109,7 +120,9 @@ const docTypes = {
 	Additionaly, a corresponding descriptor is added to "docTypes".
 */
 const docTypePatterns = [
-	[ /^Государственная поверочная схема для/, "Государственная поверочная схема"]
+	[ /^Государственная поверочная схема для/, "Государственная поверочная схема"],
+	[/^Методические рекомендации /, "МР (Методические рекомендации)"],
+	[/^ИПБОТ /, "Инструкция по промышленной безопасности и охране труда"]
 ];
 
 
@@ -142,7 +155,7 @@ function detectWeb(doc, url) {
 	let pathname = doc.location.pathname;
 	let searchPattern = '/search/';
 	let recordPattern = /^\/document\/([0-9]+)/;
-
+	
 	if (pathname.includes(searchPattern)) {
 		return 'multiple'; 
 	}
@@ -187,16 +200,17 @@ function getSearchResult(doc, url) {
 
 
 /*
-	Checks whether full text pdf is available. If available, sends a request,
+	Checks whether full text pdf is available. If available, sends a POST request,
 	and waits for the "ready" status. Then calls routine constructing Zotero item.
 	In case of a time out or no pdf, "Zotero item" routine is called.
 */
 function scrape(doc, url) {
-	waitStep = 2000;
-	waitCount = 20;
+	waitStep = 4000;
+	waitCount = 40;
 
 	if (metadata.pdfKey) {
-		Z.debug('Requesting pdf id: ' + metadata.CNTDID + ' key: ' + metadata.pdfKey)
+		//Z.debug('Requesting pdf id: ' + metadata.CNTDID + ' key: ' + metadata.pdfKey)
+		Z.debug('Requesting pdf id: ' + metadata.CNTDID)
 		postUrl = 'http://docs.cntd.ru/pdf/get/';
 		postData = 'id=' + metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
 		ZU.doPost(postUrl, postData, waitforPDF);
@@ -205,13 +219,16 @@ function scrape(doc, url) {
 		scrapeMetadata(doc, url);
 	}
 	
+	// Waits for the PDF "ready" status by pinging the server using GET requests
 	function waitforPDF(responseText, xmlhttp) {
-		Z.debug('PDF request response: ' + responseText);
+		if (responseText) Z.debug('PDF request response: ' + responseText);
 		getURL = 'http://docs.cntd.ru/pdf/get/?id='
 			+ metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
 		ZU.doGet(getURL, checkforPDF);
 	}
 	
+	// Checks server response. If PDF is not ready and the maximum retry count is
+	// not reached, keep waiting. Otherwise, call metadata ruotine.
 	function checkforPDF(responseText, xmlhttp, requestURL) {
 		Z.debug('Waiting for pdf ready status: ' + responseText);
 		let status = pdfStatus[responseText.match(/\{"status":"([a-z]+)/)[1]];
@@ -238,6 +255,7 @@ function scrape(doc, url) {
 }
 
 
+// Constructs Zotero item and populates it
 function scrapeMetadata(doc, url) {
 	let extra = [];
 	let zItem = new Zotero.Item(metadata.itemType);
@@ -248,6 +266,7 @@ function scrapeMetadata(doc, url) {
 	zItem.title = metadata.title;
 	zItem.url = url;
 	zItem.language = 'Russian';
+
 	// For statute, the date/dateEncated field is set to the last amendment
 	// date. Original enactment date is stored in the extra field.
 	zItem.date = metadata.dateAmended ? metadata.dateAmended : metadata.dateEnacted;
@@ -260,15 +279,24 @@ function scrapeMetadata(doc, url) {
 		case 'report':
 			zItem.reportType = metadata.subType;
 			zItem.reportNumber = metadata.publicDocNumber;
-			zItem.title = zItem.title.replace(metadata.subType + ' '
-				+ metadata.publicDocNumber + ' ', ''); 
+			break;
 	}
 
-	switch (metadata.type) {
-		case 'code':
+	let subType = metadata.subType;
+	let subT = docTypes[subType];
+	switch (subType) {
+		case 'Кодекс РФ':
 			zItem.codeNumber = metadata.docType;
-			if (metadata.code) zItem.code = metadata.code;
+			zItem.code = metadata.code;
 			if (metadata.section) zItem.section = metadata.section;
+			break;
+//		case 'Указ Президента РФ':
+//		case 'Приказ Ростехнадзора':
+//		case 'Постановление Правительства РФ':
+//		case 'Распоряжение Правительства РФ':
+			// Remove authority from title
+//			zItem.codeNumber = subT.short;
+//			break;
 	}
 	
 	// Extra
@@ -303,17 +331,41 @@ function scrapeMetadata(doc, url) {
 function parseMetadata(doc, url) {
 	let irow;
 	let descTableRows = doc.querySelector(filters.metadataTableCSS).rows;
+	let metahtml = {};
 
 	// Parse description table
 	for (irow = 0; irow < descTableRows.length; irow++) {
 		let rowCells = descTableRows[irow].cells;
 		if (rowCells.length == 0) continue;
-		metadata[fieldMap[rowCells[0].innerText
-			.trim().slice(0, -1)]] = rowCells[1].innerText.trim();
+		let fieldName = fieldMap[rowCells[0].innerText.trim().slice(0, -1)];
+		metadata[fieldName] = rowCells[1].innerText.trim();
+		metahtml[fieldName] = rowCells[1].innerHTML;
 	}
 
+	// Some documents have multiple ID's separated by new lines
+	// For some reason, <br> tags in the innerText of publicDocNumber source html
+	// are not replaced with new lines, but simply stripped. Hence the extra code.
+	if (metadata.publicDocNumber) {
+		metadata.publicDocNumber = metahtml.publicDocNumber
+			.replace(/<br>/g, '\n').trim().replace(/[\n]+/, '; ');
+	}
+	
+	metadata.authority = metadata.authority.replace(/[\t\n]+/g, '; ');
+	
 	// ---------------- Determine subtype and adjust metadata ---------------- //
 
+	// Remove authority from document type
+	if (metadata.docType) {
+		let docType = metadata.docType;
+		for (let legalType of legalTypes) {
+			if (docType.indexOf(legalType) == 0) {
+				metadata.docType = legalType;
+				break;
+			}
+		}
+	}
+
+	// If document type is not defined, try to deduce from the title
 	if (!metadata.docType) {
 		let title = metadata.title;
 		for (let pattern of docTypePatterns) {
@@ -326,21 +378,26 @@ function parseMetadata(doc, url) {
 
 	// ---------------------------- Default values --------------------------- //
 	if (!metadata.docType) metadata.docType = 'Statute';
-	metadata.subType = 'statute';
 	metadata.type = 'statute';
 	metadata.itemType = 'statute';
 	// ============================ Default values =========================== //
 
 	// Keyword for codes needs to be extracted from the document type field
 	let subType = metadata.docType.match(/^[^\n]+/)[0].trim();
+	metadata.subType = subType;
 	let subT = docTypes[subType];
 	if (subT) {
 		metadata.subType = subType;
 		metadata.type = subT.type;
 		metadata.itemType = subT.itemType;
 		metadata.tags = subT.tags;
-		if (subT.type == 'code') {
+	}
+
+	switch (subType) {
+		case 'Кодекс РФ':
+			// Set docType to the second line ("Federal law")
 			metadata.docType = metadata.docType.match(/^[^\n]+[\n\t]+([^\n]+)/)[1].trim();
+			// Extract code name and section from the title
 			let codeTitle = metadata.title;
 			let icutoff = codeTitle.indexOf(keywords.codeAmendments);
 			if (icutoff == -1) icutoff = codeTitle.indexOf(keywords.codeVersion);
@@ -353,7 +410,29 @@ function parseMetadata(doc, url) {
 			else {
 				metadata.code = codeTitle;
 			}
-		}
+			break;
+		case 'РБ':
+			// Remove document type and number prefix from title
+			metadata.title = metadata.title.replace(subType + '-' + metadata.publicDocNumber + ' ', '');
+			let title = metadata.title;
+			let pattern = RegExp('^' + subT.short + ' "([^"]+)"$');
+			title = title.match(pattern);
+			if (title) metadata.title = title[1];
+			break;
+		case 'МР (Методические рекомендации)':
+			// Remove document type and number prefix from title
+			metadata.title = metadata.title.replace(subT.abbr + ' ' + metadata.publicDocNumber + ' ', '');
+			metadata.title = metadata.title.replace(metadata.publicDocNumber + ' ', '');
+			break;
+		case 'Технический регламент Таможенного союза':
+			// Remove document type and number prefix from title
+			metadata.title = metadata.title.replace(metadata.publicDocNumber + ' ' + subType + ' ', '')
+				.replace(/"/g, '');
+			break;
+		default:
+			// Remove document type and number prefix from title
+			metadata.title = metadata.title.replace(subType + ' ' + metadata.publicDocNumber + ' ', '');
+			if (subT) metadata.title = metadata.title.replace(subT.abbr + ' ' + metadata.publicDocNumber + ' ', '');
 	}
 
 	// ================ Determine subtype and adjust metadata ================ //
@@ -375,6 +454,7 @@ function parseMetadata(doc, url) {
 	if (metadata.dateEnacted) metadata.dateEnacted = parseDate(metadata.dateEnacted);
 	if (metadata.dateAmended) metadata.dateAmended = parseDate(metadata.dateAmended);
 	if (metadata.dateRevoked) metadata.dateRevoked = parseDate(metadata.dateRevoked);
+	if (!metadata.dateEnacted) metadata.dateEnacted = metadata.dateApproved;
 }
 
 
@@ -455,7 +535,7 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "4/26/2005",
-				"codeNumber": "Указ Президента РФ",
+				"codeNumber": "Указ",
 				"extra": "CNTDID: 901932011\nPublished: Собрание законодательства Российской Федерации, N 18, 02.05.2005, ст.1665\ndateEnactedOriginal: 4/26/2005\ndateApproved: 4/26/2005\ndateRevoked: 4/04/2006",
 				"language": "Russian",
 				"publicLawNumber": "473",
@@ -495,7 +575,7 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "4/25/2005",
-				"codeNumber": "Указ Президента РФ",
+				"codeNumber": "Указ",
 				"extra": "CNTDID: 901931853\nPublished: Собрание законодательства Российской Федерации, N 18, 02.05.2005\ndateEnactedOriginal: 4/25/2005\ndateApproved: 4/25/2005",
 				"language": "Russian",
 				"publicLawNumber": "472",
@@ -570,7 +650,7 @@ var testCases = [
 				],
 				"dateEnacted": "4/05/2016",
 				"codeNumber": "Федеральный закон",
-				"extra": "CNTDID: 901712929\nPublished: Собрание законодательства Российской Федерации, N 29, 20.07.98, ст.3399| Ведомости Федерального Собрания, N 22, 01.08.98\ndateEnactedOriginal: undefined\ndateApproved: 7/16/1998",
+				"extra": "CNTDID: 901712929\nPublished: Собрание законодательства Российской Федерации, N 29, 20.07.98, ст.3399| Ведомости Федерального Собрания, N 22, 01.08.98\ndateEnactedOriginal: 7/16/1998\ndateApproved: 7/16/1998",
 				"language": "Russian",
 				"publicLawNumber": "101-ФЗ",
 				"url": "http://docs.cntd.ru/document/901712929",
@@ -671,7 +751,7 @@ var testCases = [
 		"items": [
 			{
 				"itemType": "statute",
-				"nameOfAct": "Изменение 400/2020 ОКАТО Общероссийский классификатор объектов административно-территориального деления ОК 019-95",
+				"nameOfAct": "ОКАТО Общероссийский классификатор объектов административно-территориального деления ОК 019-95",
 				"creators": [
 					{
 						"fieldMode": 1,
@@ -807,6 +887,99 @@ var testCases = [
 						"mimeType": "application/pdf"
 					}
 				],
+				"tags": [],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://docs.cntd.ru/document/564183718",
+		"items": [
+			{
+				"itemType": "statute",
+				"nameOfAct": "Методические рекомендации по определению допустимого рабочего давления магистральных нефтепроводов и нефтепродуктоводов",
+				"creators": [
+					{
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Ростехнадзор",
+						"creatorType": "author"
+					}
+				],
+				"dateEnacted": "1/14/2020",
+				"codeNumber": "РБ",
+				"extra": "CNTDID: 564183718\ndateEnactedOriginal: 1/14/2020\ndateApproved: 1/14/2020",
+				"language": "Russian",
+				"url": "http://docs.cntd.ru/document/564183718",
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
+				"tags": [],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://docs.cntd.ru/document/564444866",
+		"items": [
+			{
+				"itemType": "statute",
+				"nameOfAct": "Руководство по безопасности при использовании атомной энергии \"Рекомендации по оценке уровня безопасности пунктов хранения и проведению анализа несоответствий требованиям действующих федеральных норм и правил в области использования атомной энергии\"",
+				"creators": [
+					{
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Ростехнадзор",
+						"creatorType": "author"
+					}
+				],
+				"dateEnacted": "3/12/2020",
+				"codeNumber": "РБ",
+				"extra": "CNTDID: 564444866\ndateEnactedOriginal: 3/12/2020\ndateApproved: 3/12/2020",
+				"language": "Russian",
+				"publicLawNumber": "164-20",
+				"url": "http://docs.cntd.ru/document/564444866",
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
+				"tags": [],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://docs.cntd.ru/document/1200105768",
+		"items": [
+			{
+				"itemType": "statute",
+				"nameOfAct": "Инструкция по промышленной безопасности и охране труда при обслуживании и эксплуатации вентиляционных установок (актуализированная редакция)",
+				"creators": [
+					{
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "ООО \"СПКТБ Нефтегазмаш\"",
+						"creatorType": "author"
+					}
+				],
+				"dateEnacted": "5/24/2017",
+				"codeNumber": "Инструкция по промышленной безопасности и охране труда",
+				"extra": "CNTDID: 1200105768\ndateEnactedOriginal: 5/24/2017\ndateApproved: 5/24/2017",
+				"language": "Russian",
+				"publicLawNumber": "409-2008",
+				"url": "http://docs.cntd.ru/document/1200105768",
+				"attachments": [],
 				"tags": [],
 				"notes": [],
 				"seeAlso": []
