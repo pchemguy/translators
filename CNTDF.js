@@ -1,6 +1,6 @@
 {
 	"translatorID": "71a95c3d-e730-4fd9-83c3-faf7e0576346",
-	"label": "CNTD",
+	"label": "CNTDF",
 	"creator": "PChemGuy",
 	"target": "https?://docs.cntd.ru/",
 	"minVersion": "3.0",
