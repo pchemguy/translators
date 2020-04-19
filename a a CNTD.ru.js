@@ -9,10 +9,10 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-19 13:39:29"
+	"lastUpdated": "2020-04-19 17:56:45"
 }
 
-/*
+/**
 	***** BEGIN LICENSE BLOCK *****
 
 	Copyright В© 2020 PChemGuy
@@ -35,11 +35,11 @@
 	***** END LICENSE BLOCK *****
 */
 
-/*
+/**
 	A provider of legislative, technical, and regulatory documents in Russian.
 	With primery focus on documents produced by Russian authorities, CNTD also
 	serves translated into Russian foreign and international documents applicable
-	to activities in Russia.  
+	to activities in Russia.
 */
 
 const filters = {
@@ -54,8 +54,8 @@ const keywords = {
 	codeVersion: "(редакция"
 };
 
-var waitStep;
-var waitCount;
+let waitStep;
+let waitCount;
 const pdfStatus = {
 	started: -1,
 	inprocess: -1,
@@ -63,10 +63,10 @@ const pdfStatus = {
 };
 
 // Holds extracted metadata
-var metadata;
-var metahtml;
+let metadata;
+let metahtml;
 
-var fieldMap = {
+let fieldMap = {
 	"Название документа": "title",
 	"Номер документа": "publicDocNumber",
 	"Вид документа": "docType",
@@ -79,7 +79,7 @@ var fieldMap = {
 	"Дата окончания действия": "dateRevoked"
 };
 
-/* 
+/**
 	Custom document types
 	Each custom type consists of:
 		key:		user facing original type name
@@ -91,14 +91,14 @@ var fieldMap = {
 */
 const docTypes = {
 	ГОСТ: { type: "standard", itemType: "report", short: "ГОСТ", abbr: "ГОСТ", tags: ['standard', 'GOST'] },
-	"ГОСТ Р": { type: "standard", itemType: "report", short: "ГОСТ Р", abbr: "ГОСТ Р", tags: ['standard', 'GOST'] }, 
+	"ГОСТ Р": { type: "standard", itemType: "report", short: "ГОСТ Р", abbr: "ГОСТ Р", tags: ['standard', 'GOST'] },
 	"Кодекс РФ": { type: "code", itemType: "statute", short: "Кодекс РФ", abbr: "Кодекс РФ", tags: ['RF Code'] },
 	РБ: { type: "statute", itemType: "statute", short: "Руководство по безопасности", abbr: "РБ" },
 	"ГН (Гигиенические нормативы)": { type: "statute", itemType: "statute", short: "Гигиенические нормативы", abbr: "ГН" },
 	"ФНП (Федеральные нормы и правила)": { type: "statute", itemType: "statute", short: "Федеральные нормы и правила", abbr: "ФНП" },
 	"СП (Санитарные правила)": { type: "statute", itemType: "statute", short: "Санитарные правила", abbr: "СП" },
-	"СанПиН": { type: "statute", itemType: "statute", short: "Санитарные правила и нормы", abbr: "СанПиН" },
-	"СНиП": { type: "statute", itemType: "statute", short: "Строительные нормы и правила", abbr: "СНиП" },
+	СанПиН: { type: "statute", itemType: "statute", short: "Санитарные правила и нормы", abbr: "СанПиН" },
+	СНиП: { type: "statute", itemType: "statute", short: "Строительные нормы и правила", abbr: "СНиП" },
 	"СП (Свод правил)": { type: "statute", itemType: "statute", short: "Свод правил", abbr: "СП" },
 	"Информационно-технический справочник по наилучшим доступным технологиям":
 		{ type: "statute", itemType: "statute", short: "Информационно-технический справочник по наилучшим доступным технологиям", abbr: "ИТС" },
@@ -107,22 +107,21 @@ const docTypes = {
 	"СТО, Стандарт организации": { type: "statute", itemType: "statute", short: "Стандарт организации", abbr: "СТО" },
 	"ТР (Технический регламент)": { type: "statute", itemType: "statute", short: "Технический регламент", abbr: "ТР" },
 	"Технический регламент Таможенного союза":
-		{ type: "statute", itemType: "statute", short: "Технический регламент Таможенного союза", abbr: "ТР ТС"},
+		{ type: "statute", itemType: "statute", short: "Технический регламент Таможенного союза", abbr: "ТР ТС" },
 	"Технический регламент Евразийского экономического союза":
-		{ type: "statute", itemType: "statute", short: "Технический регламент Евразийского экономического союза", abbr: "ТР ЕАЭС"},
-	"ТР (Технический регламент)": { type: "statute", itemType: "statute", short: "Технический регламент", abbr: "ТР"},
+		{ type: "statute", itemType: "statute", short: "Технический регламент Евразийского экономического союза", abbr: "ТР ЕАЭС" },
 	"Государственная поверочная схема": { type: "statute", itemType: "statute",
-		short: "Государственная поверочная схема", abbr: "ГПС"},
-	Изменение: { type: "statute", itemType: "statute", short: "Изменение", abbr: "Изменение"},
-	"МР (Методические рекомендации)": { type: "statute", itemType: "statute", short: "Методические рекомендации", abbr: "МР"},
+		short: "Государственная поверочная схема", abbr: "ГПС" },
+	Изменение: { type: "statute", itemType: "statute", short: "Изменение", abbr: "Изменение" },
+	"МР (Методические рекомендации)": { type: "statute", itemType: "statute", short: "Методические рекомендации", abbr: "МР" },
 	"Инструкция по промышленной безопасности и охране труда":
-		{ type: "statute", itemType: "statute", short: "ИПБОТ", abbr: "ИПБОТ"},
-	"Statute": { type: "statute", itemType: "statute", short: "Statute", abbr: "statute"}
+		{ type: "statute", itemType: "statute", short: "ИПБОТ", abbr: "ИПБОТ" },
+	Statute: { type: "statute", itemType: "statute", short: "Statute", abbr: "statute" }
 };
 
-const legalTypes = [ "Указ", "Приказ", "Постановление", "Распоряжение" ];
+const legalTypes = ["Указ", "Приказ", "Постановление", "Распоряжение"];
 
-/*
+/**
 	There are records with no document type defined. When such a type can be
 	defined based on document title, an array element is added here, which is an
 	arrayed pair of "pattern" to be matched against the title and "custom type".
@@ -146,7 +145,7 @@ const matchTypePattern = [
 	[/ФНП в области /, "ФНП (Федеральные нормы и правила)"],
 	[/ПБ/, "ПБ"],
 	[/ПОТ РМ/, "ПОТ РМ"]
-]
+];
 
 
 /**
@@ -168,23 +167,22 @@ function addLink(item, title, url) {
 
 
 function detectWeb(doc, url) {
-	let domain = url.match(/^https?:\/\/([^/]+)/)[1];
 	let pathname = doc.location.pathname;
 	let searchPattern = '/search/';
 	let recordPattern = /^\/document\/([0-9]+)/;
-	
+
 	if (pathname.includes(searchPattern)) {
-		return 'multiple'; 
+		return 'multiple';
 	}
-	
+
 	if (pathname.match(recordPattern)) {
 		metadata = {};
 		metahtml = {};
 		metadata.CNTDID = pathname.match(recordPattern)[1];
-		parseMetadata(doc, url);
+		parseMetadata(doc);
 		return metadata.itemType;
 	}
-	
+
 	return false;
 }
 
@@ -204,7 +202,7 @@ function doWeb(doc, url) {
 		}
 	}
 	else {
-		adjustMetadata(doc, url);
+		adjustMetadata(doc);
 		scrape(doc, url);
 	}
 }
@@ -213,12 +211,12 @@ function doWeb(doc, url) {
 function getSearchResult(doc, url) {
 	let records = {};
 	let searchResult = doc.querySelectorAll(filters.searchResultCSS);
-	searchResult.forEach(record => {records[record.href] = record.innerText.trim();});
+	searchResult.forEach(record => records[record.href] = record.innerText.trim());
 	return records;
 }
 
 
-/*
+/**
 	Checks whether full text pdf is available. If available, sends a POST request,
 	and waits for the "ready" status. Then calls routine constructing Zotero item.
 	In case of a time out or no pdf, "Zotero item" routine is called.
@@ -228,35 +226,35 @@ function scrape(doc, url) {
 	waitCount = 40;
 
 	if (metadata.pdfKey) {
-		//Z.debug('Requesting pdf id: ' + metadata.CNTDID + ' key: ' + metadata.pdfKey)
-		Z.debug('Requesting pdf id: ' + metadata.CNTDID)
-		postUrl = 'http://docs.cntd.ru/pdf/get/';
-		postData = 'id=' + metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
+		// Z.debug('Requesting pdf id: ' + metadata.CNTDID + ' key: ' + metadata.pdfKey)
+		Z.debug('Requesting pdf id: ' + metadata.CNTDID);
+		let postUrl = 'http://docs.cntd.ru/pdf/get/';
+		let postData = 'id=' + metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
 		ZU.doPost(postUrl, postData, waitforPDF);
 	}
 	else {
 		scrapeMetadata(doc, url);
 	}
-	
+
 	// Waits for the PDF "ready" status by pinging the server using GET requests
 	function waitforPDF(responseText, xmlhttp) {
 		if (responseText) Z.debug('PDF request response: ' + responseText);
-		getURL = 'http://docs.cntd.ru/pdf/get/?id='
+		let getURL = 'http://docs.cntd.ru/pdf/get/?id='
 			+ metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
 		ZU.doGet(getURL, checkforPDF);
 	}
-	
+
 	// Checks server response. If PDF is not ready and the maximum retry count is
 	// not reached, keep waiting. Otherwise, call metadata ruotine.
 	function checkforPDF(responseText, xmlhttp, requestURL) {
 		Z.debug('Waiting for pdf ready status: ' + responseText);
 		let status = pdfStatus[responseText.match(/\{"status":"([a-z]+)/)[1]];
-		
+
 		switch (status) {
 			case -1:
 				waitCount--;
 				if (waitCount <= 0) {
-					Z.debug('PDF request time out...')
+					Z.debug('PDF request time out...');
 					scrapeMetadata(doc, url);
 				}
 				else {
@@ -278,7 +276,7 @@ function scrape(doc, url) {
 function scrapeMetadata(doc, url) {
 	let extra = [];
 	let zItem = new Zotero.Item(metadata.itemType);
-	//creator: {fieldMode: 1, firstName: "", lastName: "", creatorType: "author"};
+	// creator: {fieldMode: 1, firstName: "", lastName: "", creatorType: "author"};
 	let authorities = metadata.authority.split(' ## ');
 	for (let authority of authorities) {
 		zItem.creators.push({
@@ -316,7 +314,7 @@ function scrapeMetadata(doc, url) {
 			zItem.codeNumber = metadata.docType;
 			break;
 	}
-	
+
 	// Extra
 	extra.push('CNTDID: ' + metadata.CNTDID);
 	if (metadata.published) extra.push('Published: ' + metadata.published);
@@ -324,7 +322,7 @@ function scrapeMetadata(doc, url) {
 	if (metadata.dateApproved) extra.push('dateApproved: ' + metadata.dateApproved);
 	if (metadata.dateRevoked) extra.push('dateRevoked: ' + metadata.dateRevoked);
 	zItem.extra = extra.join('\n');
-	
+
 	if (metadata.tags) zItem.tags.push(...metadata.tags);
 	if (metadata.legalStatus && metadata.legalStatus != keywords.activeLaw) zItem.tags.push('Inactive');
 	if (metadata.dateRevoked) zItem.tags.push('Revoked');
@@ -336,7 +334,7 @@ function scrapeMetadata(doc, url) {
 			mimeType: "application/pdf"
 		});
 	}
-	
+
 	zItem.complete();
 }
 
@@ -346,7 +344,7 @@ function scrapeMetadata(doc, url) {
  *
  *	@return {null}
  */
-function parseMetadata(doc, url) {
+function parseMetadata(doc) {
 	let irow;
 	let descTableRows = doc.querySelector(filters.metadataTableCSS).rows;
 	let subType;
@@ -360,10 +358,10 @@ function parseMetadata(doc, url) {
 		metahtml[fieldName] = rowCells[1].innerHTML;
 	}
 	let title = metadata.title;
-	
-	// Try to deduce type from the multi-valued type field 
+
+	// Try to deduce type from the multi-valued type field
 	if (metadata.docType) {
-		docType = metadata.docType;
+		let docType = metadata.docType;
 		for (let pattern of matchTypePattern) {
 			if (docType.match(pattern[0])) {
 				subType = pattern[1];
@@ -392,8 +390,8 @@ function parseMetadata(doc, url) {
 
 	if (!metadata.docType) metadata.docType = 'Statute';
 	metadata.type = 'statute';
-	metadata.itemType = 'statute';	
-	
+	metadata.itemType = 'statute';
+
 	// Set subType from docType if not set.
 	if (!metadata.subType) {
 		subType = metadata.docType.match(/^[^\n]+/)[0].trim(); // For RF Codes (1st line)
@@ -412,13 +410,13 @@ function parseMetadata(doc, url) {
  *
  *	@return {null}
  */
-function adjustMetadata(doc, url) {
+function adjustMetadata(doc) {
 	let subType = metadata.subType;
 	let subT = docTypes[subType];
-	
-	/*
+
+	/**
 		Document ID, title, type, and authority may have multiple values separated
-		by several new lines. Replace separator with " ## ". 
+		by several new lines. Replace separator with " ## ".
 		There are issues with missing "\n" (innerText) in place of <br> (innerHTML)
 		possibly due to the "doc" format passed by the tester, hence the extra code.
 	*/
@@ -448,15 +446,22 @@ function adjustMetadata(doc, url) {
 
 	if (subT) {
 		let docNumber;
+		let docType;
+		let section;
 		let docSubNumber;
 		let title;
 		let prefix;
+		let codeTitle;
+		let icutoff;
+		let pattern;
+		let dateApproved;
+
 		switch (subType) {
 			case 'Кодекс РФ':
 				// Set docType to the second line ("Federal law")
 				metadata.docType = metadata.docType.match(/^[^\n]+[\n\t]+([^\n]+)/)[1].trim();
-				let codeTitle = metadata.title;
-				let icutoff = codeTitle.indexOf(keywords.codeAmendments);
+				codeTitle = metadata.title;
+				icutoff = codeTitle.indexOf(keywords.codeAmendments);
 				if (icutoff == -1) icutoff = codeTitle.indexOf(keywords.codeVersion);
 				metadata.code = codeTitle.slice(0, icutoff).trim();
 				break;
@@ -464,7 +469,7 @@ function adjustMetadata(doc, url) {
 				// Remove document type and number prefix from title
 				metadata.title = metadata.title.replace(subType + '-' + metadata.publicDocNumber + ' ', '');
 				title = metadata.title;
-				let pattern = RegExp('^' + subT.short + ' "([^"]+)"$');
+				pattern = RegExp('^' + subT.short + ' "([^"]+)"$');
 				title = title.match(pattern);
 				if (title) metadata.title = title[1];
 				break;
@@ -482,7 +487,7 @@ function adjustMetadata(doc, url) {
 				title = metadata.title;
 				prefix = 'Об утверждении Правил ';
 				if (title.startsWith(prefix)) {
-					title = title.replace('Об утверждении Правил ', 'Правила ');					
+					title = title.replace('Об утверждении Правил ', 'Правила ');
 				}
 				else {
 					prefix = metadata.title.match(/^ПБ ([0-9.\-]+) /);
@@ -526,7 +531,7 @@ function adjustMetadata(doc, url) {
 				if (subType[0] == 'С') metadata.code = 'СП (Санитарные правила)';
 				break;
 			case 'СНиП':
-				let dateApproved = metadata.dateApproved;
+				dateApproved = metadata.dateApproved;
 				dateApproved = dateApproved.replace('*', '');
 				dateApproved = dateApproved.replace(/\n.*/, '').trim();
 				metadata.dateApproved = dateApproved;
@@ -534,7 +539,7 @@ function adjustMetadata(doc, url) {
 				title = title.replace('*', '');
 				prefix = title.match(/^СНиП ([0-9.\-/]+) /);
 				if (prefix) {
-					metadata.title = title.slice(prefix[0].length);
+					title = title.slice(prefix[0].length);
 					docNumber = prefix[1];
 					docSubNumber = metadata.publicDocNumber
 						.replace(' ## ' + docNumber, '').replace(docNumber + ' ## ', '').replace(docNumber, '');
@@ -546,8 +551,8 @@ function adjustMetadata(doc, url) {
 				break;
 			case 'ФНП (Федеральные нормы и правила)':
 				metadata.code = subType;
-				let docType = metadata.docType;
-				let section = docType.match(subT.abbr + '[^\\n]+')[0];
+				docType = metadata.docType;
+				section = docType.match(subT.abbr + '[^\\n]+')[0];
 				metadata.section = section;
 				metadata.docType = docType.replace(section, '').trim();
 				title = metadata.title;
@@ -612,10 +617,10 @@ function adjustMetadata(doc, url) {
 		metadata.pdfURL = 'http://docs.cntd.ru/pdf/get/id/'
 			+ metadata.CNTDID + '/key/' + pdfKey + '/file/1';
 	}
-	
+
 	// Replace separator when multiple publication sources are provided
 	if (metadata.published) metadata.published = metadata.published.replace(/[\t\n]+/g, ' ## ');
-	
+
 	// Parse dates with Russian month names
 	if (metadata.dateApproved) metadata.dateApproved = parseDate(metadata.dateApproved);
 	if (metadata.dateEnacted) metadata.dateEnacted = parseDate(metadata.dateEnacted);
@@ -641,8 +646,6 @@ function parseDate(text) {
 	date = monthsRu[date[2]] + '/' + date[1] + '/' + date[3];
 	return date;
 }
-
-
 
 
 /** BEGIN TEST CASES **/
