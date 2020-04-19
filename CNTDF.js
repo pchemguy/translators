@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-19 17:56:45"
+	"lastUpdated": "2020-04-19 22:17:26"
 }
 
 /**
@@ -157,6 +157,7 @@ const matchTypePattern = [
  *
  *	@return {None}
  */
+/**
 function addLink(item, title, url) {
 	item.attachments.push({ linkMode: "linked_url", // Apparently, should be the first
 		title: title,
@@ -164,7 +165,7 @@ function addLink(item, title, url) {
 		contentType: "text/html",
 		url: url });
 }
-
+*/
 
 function detectWeb(doc, url) {
 	let pathname = doc.location.pathname;
@@ -208,7 +209,7 @@ function doWeb(doc, url) {
 }
 
 
-function getSearchResult(doc, url) {
+function getSearchResult(doc, _url) {
 	let records = {};
 	let searchResult = doc.querySelectorAll(filters.searchResultCSS);
 	searchResult.forEach(record => records[record.href] = record.innerText.trim());
@@ -237,7 +238,7 @@ function scrape(doc, url) {
 	}
 
 	// Waits for the PDF "ready" status by pinging the server using GET requests
-	function waitforPDF(responseText, xmlhttp) {
+	function waitforPDF(responseText, _xmlhttp) {
 		if (responseText) Z.debug('PDF request response: ' + responseText);
 		let getURL = 'http://docs.cntd.ru/pdf/get/?id='
 			+ metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
@@ -245,10 +246,10 @@ function scrape(doc, url) {
 	}
 
 	// Checks server response. If PDF is not ready and the maximum retry count is
-	// not reached, keep waiting. Otherwise, call metadata ruotine.
-	function checkforPDF(responseText, xmlhttp, requestURL) {
+	// not reached, keep waiting. Otherwise, call metadata routine.
+	function checkforPDF(responseText, _xmlhttp, _requestURL) {
 		Z.debug('Waiting for pdf ready status: ' + responseText);
-		let status = pdfStatus[responseText.match(/\{"status":"([a-z]+)/)[1]];
+		let status = pdfStatus[responseText.match(/{"status":"([a-z]+)/)[1]];
 
 		switch (status) {
 			case -1:
@@ -474,7 +475,7 @@ function adjustMetadata(doc) {
 				if (title) metadata.title = title[1];
 				break;
 			case 'ПОТ РМ':
-				prefix = metadata.title.match(/^ПОТ Р ?М\-([0-9.\-/]+) /);
+				prefix = metadata.title.match(/^ПОТ Р ?М-([0-9./-]+) /);
 				if (prefix) {
 					metadata.title = metadata.title.slice(prefix[0].length);
 					docNumber = prefix[1];
@@ -490,7 +491,7 @@ function adjustMetadata(doc) {
 					title = title.replace('Об утверждении Правил ', 'Правила ');
 				}
 				else {
-					prefix = metadata.title.match(/^ПБ ([0-9.\-]+) /);
+					prefix = metadata.title.match(/^ПБ ([0-9.-]+) /);
 					if (prefix) {
 						let docNumber = prefix[1];
 						if (metadata.publicDocNumber.includes(docNumber)) {
@@ -546,6 +547,8 @@ function adjustMetadata(doc) {
 					if (docSubNumber) metadata.publicDocNumber = docNumber + ' ## ' + docSubNumber;
 				}
 				metadata.title = title;
+				metadata.code = 'СП (Свод правил)';
+				break;
 			case 'СП (Свод правил)':
 				metadata.code = 'СП (Свод правил)';
 				break;
@@ -562,7 +565,7 @@ function adjustMetadata(doc) {
 					title = title.replace(prefix[0], '');
 				}
 				else {
-					docNumber = /^НП-[0-9\-]+/;
+					docNumber = /^НП-[0-9-]+/;
 					docNumber = title.match(docNumber);
 					if (docNumber) {
 						docNumber = docNumber[0];
@@ -578,7 +581,9 @@ function adjustMetadata(doc) {
 				title = metadata.title;
 				title = title.replace(/^Об утверждении технического регламента /i, '');
 				title = title.replace(/^о/, 'О');
-				metadata.title = title;
+				metadata.title = title.replace(/"/g, '');
+				metadata.code = 'ТР (Технический регламент)';
+				break;
 			case 'Технический регламент Евразийского экономического союза':
 			case 'Технический регламент Таможенного союза':
 				// Remove document type and number prefix from title
@@ -647,7 +652,6 @@ function parseDate(text) {
 	return date;
 }
 
-
 /** BEGIN TEST CASES **/
 var testCases = [
 	{
@@ -668,7 +672,7 @@ var testCases = [
 				"date": "10/01/2019",
 				"extra": "CNTDID: 1200128307\nPublished: Официальное издание. М.: Стандартинформ, 2019 год\ndateEnactedOriginal: 7/01/2016\ndateApproved: 12/11/2015",
 				"language": "Russian",
-				"libraryCatalog": "a a CNTD.ru",
+				"libraryCatalog": "CNTDF",
 				"reportNumber": "1.0-2015",
 				"reportType": "ГОСТ",
 				"url": "http://docs.cntd.ru/document/1200128307",
@@ -782,7 +786,7 @@ var testCases = [
 				"date": "11/22/2013",
 				"extra": "CNTDID: 1200102193\nPublished: официальное издание ## М.: Стандартинформ, 2013 год\ndateEnactedOriginal: 7/01/2013\ndateApproved: 11/23/2012",
 				"language": "Russian",
-				"libraryCatalog": "a a CNTD.ru",
+				"libraryCatalog": "CNTDF",
 				"reportNumber": "1.0-2012",
 				"reportType": "ГОСТ Р",
 				"url": "http://docs.cntd.ru/document/1200102193",
@@ -894,7 +898,7 @@ var testCases = [
 				"date": "8/01/2006",
 				"extra": "CNTDID: 1200003915\nPublished: официальное издание ## Шайбы и контрящие элементы. Технические условия. Конструкция и размеры: Сб. стандартов. - М.: Стандартинформ, 2006 год\ndateEnactedOriginal: 1/01/1979\ndateApproved: 6/26/1978",
 				"language": "Russian",
-				"libraryCatalog": "a a CNTD.ru",
+				"libraryCatalog": "CNTDF",
 				"reportNumber": "11371-78",
 				"reportType": "ГОСТ",
 				"url": "http://docs.cntd.ru/document/1200003915",
@@ -968,7 +972,7 @@ var testCases = [
 				"date": "6/01/2020",
 				"extra": "CNTDID: 437253093\ndateEnactedOriginal: 6/01/2020\ndateApproved: 3/27/2020",
 				"language": "Russian",
-				"libraryCatalog": "a a CNTD.ru",
+				"libraryCatalog": "CNTDF",
 				"reportNumber": "54400-2020",
 				"reportType": "ГОСТ Р",
 				"url": "http://docs.cntd.ru/document/437253093",
@@ -1007,7 +1011,7 @@ var testCases = [
 				"date": "6/01/2020",
 				"extra": "CNTDID: 1200170667\nPublished: Официальное издание. М.: Стандартинформ, 2020\ndateEnactedOriginal: 6/01/2020\ndateApproved: 12/25/2019",
 				"language": "Russian",
-				"libraryCatalog": "a a CNTD.ru",
+				"libraryCatalog": "CNTDF",
 				"reportNumber": "58782-2019",
 				"reportType": "ГОСТ Р",
 				"url": "http://docs.cntd.ru/document/1200170667",
@@ -2095,7 +2099,7 @@ var testCases = [
 		"items": [
 			{
 				"itemType": "statute",
-				"nameOfAct": "СНиП 21-01-97 Пожарная безопасность зданий и сооружений (с Изменениями N 1, 2)",
+				"nameOfAct": "Пожарная безопасность зданий и сооружений (с Изменениями N 1, 2)",
 				"creators": [
 					{
 						"fieldMode": 1,
