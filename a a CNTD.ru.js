@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-18 23:27:21"
+	"lastUpdated": "2020-04-19 13:39:29"
 }
 
 /*
@@ -92,12 +92,14 @@ var fieldMap = {
 const docTypes = {
 	ГОСТ: { type: "standard", itemType: "report", short: "ГОСТ", abbr: "ГОСТ", tags: ['standard', 'GOST'] },
 	"ГОСТ Р": { type: "standard", itemType: "report", short: "ГОСТ Р", abbr: "ГОСТ Р", tags: ['standard', 'GOST'] }, 
-	"Кодекс РФ": { type: "code", itemType: "statute", short: "Кодекс РФ", abbr: "Кодекс РФ", tags: ['code'] },
+	"Кодекс РФ": { type: "code", itemType: "statute", short: "Кодекс РФ", abbr: "Кодекс РФ", tags: ['RF Code'] },
 	РБ: { type: "statute", itemType: "statute", short: "Руководство по безопасности", abbr: "РБ" },
 	"ГН (Гигиенические нормативы)": { type: "statute", itemType: "statute", short: "Гигиенические нормативы", abbr: "ГН" },
 	"ФНП (Федеральные нормы и правила)": { type: "statute", itemType: "statute", short: "Федеральные нормы и правила", abbr: "ФНП" },
 	"СП (Санитарные правила)": { type: "statute", itemType: "statute", short: "Санитарные правила", abbr: "СП" },
 	"СанПиН": { type: "statute", itemType: "statute", short: "Санитарные правила и нормы", abbr: "СанПиН" },
+	"СНиП": { type: "statute", itemType: "statute", short: "Строительные нормы и правила", abbr: "СНиП" },
+	"СП (Свод правил)": { type: "statute", itemType: "statute", short: "Свод правил", abbr: "СП" },
 	"Информационно-технический справочник по наилучшим доступным технологиям":
 		{ type: "statute", itemType: "statute", short: "Информационно-технический справочник по наилучшим доступным технологиям", abbr: "ИТС" },
 	"ПОТ РМ": { type: "statute", itemType: "statute", short: "ПОТ РМ", abbr: "ПОТ РМ" },
@@ -108,6 +110,7 @@ const docTypes = {
 		{ type: "statute", itemType: "statute", short: "Технический регламент Таможенного союза", abbr: "ТР ТС"},
 	"Технический регламент Евразийского экономического союза":
 		{ type: "statute", itemType: "statute", short: "Технический регламент Евразийского экономического союза", abbr: "ТР ЕАЭС"},
+	"ТР (Технический регламент)": { type: "statute", itemType: "statute", short: "Технический регламент", abbr: "ТР"},
 	"Государственная поверочная схема": { type: "statute", itemType: "statute",
 		short: "Государственная поверочная схема", abbr: "ГПС"},
 	Изменение: { type: "statute", itemType: "statute", short: "Изменение", abbr: "Изменение"},
@@ -126,22 +129,23 @@ const legalTypes = [ "Указ", "Приказ", "Постановление", "
 	Additionaly, a corresponding descriptor is added to "docTypes".
 */
 const docTypePatterns = [
-	[ /^Государственная поверочная схема для/, "Государственная поверочная схема"],
-	[/Технический регламент Евразийского экономического союза/,
-		"Технический регламент Евразийского экономического союза"],
+	[/^Государственная поверочная схема для/, "Государственная поверочная схема"],
 	[/^Методические рекомендации /, "МР (Методические рекомендации)"],
-	[/^ИПБОТ /, "Инструкция по промышленной безопасности и охране труда"],
-	[/^ГН [0-9.\-/]+ /, "ГН (Гигиенические нормативы)"],
-	[/^СП [0-9.\-/]+ /, "СП (Санитарные правила)"],
-	[/^СанПиН [0-9.\-/]+ /, "СанПиН"],
-	[/^ПОТ Р ?М\-[0-9.\-/]+ /, "ПОТ РМ"]
+	[/^ИПБОТ /, "Инструкция по промышленной безопасности и охране труда"]
 ];
 
 // Use this to match against document type field (for multi-valued types)
 const matchTypePattern = [
-	[/^ТР ЕАЭС /, "Технический регламент Евразийского экономического союза"],
+	[/Технический регламент Таможенного союза/, "Технический регламент Таможенного союза"],
+	[/Технический регламент/, "ТР (Технический регламент)"],
+	[/СанПиН/, "СанПиН"],
+	[/СНиП/, "СНиП"],
+	[/ГН/, "ГН (Гигиенические нормативы)"],
+	[/СП \(Свод правил\)/, "СП (Свод правил)"],
+	[/СП \(Санитарные правила\)/, "СП (Санитарные правила)"],
 	[/ФНП в области /, "ФНП (Федеральные нормы и правила)"],
-	[/ПБ/, "ПБ"]
+	[/ПБ/, "ПБ"],
+	[/ПОТ РМ/, "ПОТ РМ"]
 ]
 
 
@@ -345,6 +349,7 @@ function scrapeMetadata(doc, url) {
 function parseMetadata(doc, url) {
 	let irow;
 	let descTableRows = doc.querySelector(filters.metadataTableCSS).rows;
+	let subType;
 
 	// Parse description table
 	for (irow = 0; irow < descTableRows.length; irow++) {
@@ -354,24 +359,32 @@ function parseMetadata(doc, url) {
 		metadata[fieldName] = rowCells[1].innerText.trim();
 		metahtml[fieldName] = rowCells[1].innerHTML;
 	}
-
-	// Try to deduce type from the title
 	let title = metadata.title;
-	for (let pattern of docTypePatterns) {
-		if (title.match(pattern[0])) {
-			metadata.docType = pattern[1];
-			break;
+	
+	// Try to deduce type from the multi-valued type field 
+	if (metadata.docType) {
+		docType = metadata.docType;
+		for (let pattern of matchTypePattern) {
+			if (docType.match(pattern[0])) {
+				subType = pattern[1];
+				break;
+			}
+		}
+		if (subType) {
+			switch (subType) {
+				case 'ТР (Технический регламент)':
+					if (title.startsWith('ТР ЕАЭС')) subType = 'Технический регламент Евразийского экономического союза';
+					break;
+			}
+			metadata.subType = subType;
 		}
 	}
 
-	// Try to deduce type from the multi-valued type field 
-	if (metadata.docType) {
-		let docType = metadata.docType;
-
-		for (let pattern of matchTypePattern) {
-			if (docType.match(pattern[0])) {
-				docType = pattern[1];
-				metadata.subType = docType;
+	// Try to deduce type from the title
+	if (!metadata.docType) {
+		for (let pattern of docTypePatterns) {
+			if (title.match(pattern[0])) {
+				metadata.docType = pattern[1];
 				break;
 			}
 		}
@@ -380,10 +393,9 @@ function parseMetadata(doc, url) {
 	if (!metadata.docType) metadata.docType = 'Statute';
 	metadata.type = 'statute';
 	metadata.itemType = 'statute';	
-
-	// Check match for custom types
-	let subType = metadata.subType;
-	if (!subType) {
+	
+	// Set subType from docType if not set.
+	if (!metadata.subType) {
 		subType = metadata.docType.match(/^[^\n]+/)[0].trim(); // For RF Codes (1st line)
 		metadata.subType = subType;
 	}
@@ -391,7 +403,6 @@ function parseMetadata(doc, url) {
 	if (subT) {
 		metadata.type = subT.type;
 		metadata.itemType = subT.itemType;
-		if (subT.tags) metadata.tags = subT.tags;
 	}
 }
 
@@ -459,10 +470,13 @@ function adjustMetadata(doc, url) {
 				break;
 			case 'ПОТ РМ':
 				prefix = metadata.title.match(/^ПОТ Р ?М\-([0-9.\-/]+) /);
-				metadata.title = metadata.title.slice(prefix[0].length);
-				docNumber = prefix[1];
-				docSubNumber = metadata.publicDocNumber.replace(' ## ' + docNumber, '').replace(docNumber, '');
-				if (docSubNumber) metadata.publicDocNumber = docNumber + ' ## ' + docSubNumber;
+				if (prefix) {
+					metadata.title = metadata.title.slice(prefix[0].length);
+					docNumber = prefix[1];
+					docSubNumber = metadata.publicDocNumber
+						.replace(' ## ' + docNumber, '').replace(docNumber + ' ## ', '').replace(docNumber, '');
+					if (docSubNumber) metadata.publicDocNumber = docNumber + ' ## ' + docSubNumber;
+				}
 				break;
 			case 'ПБ':
 				title = metadata.title;
@@ -476,7 +490,8 @@ function adjustMetadata(doc, url) {
 						let docNumber = prefix[1];
 						if (metadata.publicDocNumber.includes(docNumber)) {
 							title = title.slice(prefix[0].length);
-							let docSubNumber = metadata.publicDocNumber.replace(' ## ' + docNumber, '').replace(docNumber, '');
+							let docSubNumber = metadata.publicDocNumber
+								.replace(' ## ' + docNumber, '').replace(docNumber + ' ## ', '').replace(docNumber, '');
 							if (docSubNumber) metadata.publicDocNumber = docNumber + ' ## ' + docSubNumber;
 						}
 					}
@@ -494,8 +509,8 @@ function adjustMetadata(doc, url) {
 				}
 				break;
 			case 'ГН (Гигиенические нормативы)':
-			case 'СП (Санитарные правила)':
 			case 'СанПиН':
+			case 'СП (Санитарные правила)':
 				if (!metadata.publicDocNumber) break;
 				docNumber = metadata.title.slice(subT.abbr.length + 1).match(/^[^\s]+/);
 				if (docNumber) {
@@ -504,9 +519,30 @@ function adjustMetadata(doc, url) {
 				if (docNumber) {
 					docNumber = docNumber[0];
 					metadata.title = metadata.title.replace(subT.abbr + ' ' + docNumber + ' ', '');
-					docSubNumber = metadata.publicDocNumber.replace(' ## ' + docNumber, '').replace(docNumber, '');
+					docSubNumber = metadata.publicDocNumber
+						.replace(' ## ' + docNumber, '').replace(docNumber + ' ## ', '').replace(docNumber, '');
 					if (docSubNumber) metadata.publicDocNumber = docNumber + ' ## ' + docSubNumber;
 				}
+				if (subType[0] == 'С') metadata.code = 'СП (Санитарные правила)';
+				break;
+			case 'СНиП':
+				let dateApproved = metadata.dateApproved;
+				dateApproved = dateApproved.replace('*', '');
+				dateApproved = dateApproved.replace(/\n.*/, '').trim();
+				metadata.dateApproved = dateApproved;
+				title = metadata.title;
+				title = title.replace('*', '');
+				prefix = title.match(/^СНиП ([0-9.\-/]+) /);
+				if (prefix) {
+					metadata.title = title.slice(prefix[0].length);
+					docNumber = prefix[1];
+					docSubNumber = metadata.publicDocNumber
+						.replace(' ## ' + docNumber, '').replace(docNumber + ' ## ', '').replace(docNumber, '');
+					if (docSubNumber) metadata.publicDocNumber = docNumber + ' ## ' + docSubNumber;
+				}
+				metadata.title = title;
+			case 'СП (Свод правил)':
+				metadata.code = 'СП (Свод правил)';
 				break;
 			case 'ФНП (Федеральные нормы и правила)':
 				metadata.code = subType;
@@ -518,24 +554,36 @@ function adjustMetadata(doc, url) {
 				prefix = /^Об утверждении (|и введении в действие )федеральных норм и правил в области [^"]+/i;
 				prefix = title.match(prefix);
 				if (prefix) {
-					metadata.title = title.replace(prefix[0], '');
+					title = title.replace(prefix[0], '');
 				}
 				else {
 					docNumber = /^НП-[0-9\-]+/;
 					docNumber = title.match(docNumber);
 					if (docNumber) {
 						docNumber = docNumber[0];
-						metadata.title = title.replace(docNumber, '');
-						docSubNumber = metadata.publicDocNumber.replace(' ## ' + docNumber, '').replace(docNumber, '');
+						title = title.replace(docNumber, '');
+						docSubNumber = metadata.publicDocNumber
+							.replace(' ## ' + docNumber, '').replace(docNumber + ' ## ', '').replace(docNumber, '');
 						if (docSubNumber) metadata.publicDocNumber = docNumber + ' ## ' + docSubNumber;
 					}
 				}
+				metadata.title = title.replace(/"/g, '');
+				break;
+			case 'ТР (Технический регламент)':
+				title = metadata.title;
+				title = title.replace(/^Об утверждении технического регламента /i, '');
+				title = title.replace(/^о/, 'О');
+				metadata.title = title;
 			case 'Технический регламент Евразийского экономического союза':
 			case 'Технический регламент Таможенного союза':
 				// Remove document type and number prefix from title
 				metadata.title = metadata.title.replace(/"/g, '');
+				metadata.code = 'ТР (Технический регламент)';
 				break;
 		}
+
+		// Tags
+		if (subT.tags) metadata.tags = subT.tags;
 	}
 	else {
 		// Remove authority from document type
@@ -588,6 +636,8 @@ function parseDate(text) {
 		июля: 7, августа: 8, сентября: 9, октября: 10, ноября: 11, декабря: 12 };
 	let datePattern = /^\s*([0-9]{1,2})\s+([^\s]+)\s+([0-9]+)/;
 	let date = text.match(datePattern);
+	if (!date) return undefined;
+	if (!monthsRu[date[2]]) return undefined;
 	date = monthsRu[date[2]] + '/' + date[1] + '/' + date[3];
 	return date;
 }
@@ -815,7 +865,7 @@ var testCases = [
 				],
 				"tags": [
 					{
-						"tag": "code"
+						"tag": "RF Code"
 					}
 				],
 				"notes": [],
@@ -1167,6 +1217,7 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "3/31/2011",
+				"code": "СП (Санитарные правила)",
 				"codeNumber": "СП (Санитарные правила)",
 				"extra": "CNTDID: 901865875\nPublished: Российская газета, N 119/1, 20.06.2003 (специальный выпуск) ## Сборник нормативно-правовых актов в области санитарно-эпидемиологического благополучия населения. Часть II.- М.: Федеральный центр госсанэпиднадзора Минздрава России, 2003 год\ndateEnactedOriginal: 7/01/2003\ndateApproved: 6/16/2003",
 				"language": "Russian",
@@ -1311,6 +1362,7 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "10/30/1987",
+				"code": "СП (Санитарные правила)",
 				"codeNumber": "СанПиН",
 				"extra": "CNTDID: 1200034684\nPublished: Сборник важнейших официальных материалов по санитарным и противоэпидемическим вопросам. В семи томах. Том 2. В двух частях. Часть 2. - М.: МП \"Рарог\", 1992 год\ndateEnactedOriginal: 10/30/1987\ndateApproved: 10/30/1987",
 				"language": "Russian",
@@ -1345,6 +1397,7 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "5/15/2003",
+				"code": "СП (Санитарные правила)",
 				"codeNumber": "СанПиН",
 				"extra": "CNTDID: 901852023\nPublished: Российская газета, N 71, 12.04.2003 ## Бюллетень нормативных актов федеральных органов исполнительной власти, N 25, 23.06.2003 ## Приложение к \"Российской газете\", N 27, 2003 год (опубликовано без приложения)\ndateEnactedOriginal: 4/23/2003\ndateApproved: 2/04/2003",
 				"language": "Russian",
@@ -1553,7 +1606,8 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "7/29/2019",
-				"codeNumber": "СП (Санитарные правила)",
+				"code": "СП (Свод правил)",
+				"codeNumber": "СП (Свод правил)",
 				"extra": "CNTDID: 563400440\nPublished: Официальное издание. М.: Стандартинформ, 2019 год\ndateEnactedOriginal: 7/29/2019\ndateApproved: 1/28/2019",
 				"language": "Russian",
 				"publicLawNumber": "449.1326000.2019",
@@ -1586,6 +1640,7 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "7/01/2014",
+				"code": "ТР (Технический регламент)",
 				"codeNumber": "Технический регламент Таможенного союза",
 				"extra": "CNTDID: 902359424\nPublished: Официальный сайт Комиссии таможенного союза www.tsouz.ru, 20.07.2012\ndateEnactedOriginal: 7/01/2014\ndateApproved: 7/20/2012",
 				"language": "Russian",
@@ -1619,6 +1674,7 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "1/01/2019",
+				"code": "ТР (Технический регламент)",
 				"codeNumber": "Технический регламент Евразийского экономического союза",
 				"extra": "CNTDID: 456090353\nPublished: Официальный сайт Евразийского экономического союза www.eaeunion.org, 05.09.2017\ndateEnactedOriginal: 1/01/2019\ndateApproved: 6/23/2017",
 				"language": "Russian",
@@ -1652,6 +1708,7 @@ var testCases = [
 					}
 				],
 				"dateEnacted": "6/30/2000",
+				"code": "ТР (Технический регламент)",
 				"codeNumber": "ТР (Технический регламент)",
 				"extra": "CNTDID: 1200043175\nPublished: / Правительство Москвы; Комплекс архитектуры, строительства, развития и реконструкции города. - М., 2000 год\ndateEnactedOriginal: 6/30/2000\ndateApproved: 6/30/2000",
 				"language": "Russian",
@@ -1888,11 +1945,7 @@ var testCases = [
 				"section": "НП \"АВОК\"",
 				"url": "http://docs.cntd.ru/document/552484101",
 				"attachments": [],
-				"tags": [
-					{
-						"tag": "Inactive"
-					}
-				],
+				"tags": [],
 				"notes": [],
 				"seeAlso": []
 			}
@@ -1919,6 +1972,142 @@ var testCases = [
 				"language": "Russian",
 				"publicLawNumber": "11-2019",
 				"url": "http://docs.cntd.ru/document/564068890",
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
+				"tags": [],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://docs.cntd.ru/document/902243701",
+		"items": [
+			{
+				"itemType": "statute",
+				"nameOfAct": "О безопасности сетей газораспределения и газопотребления (с изменениями на 14 декабря 2018 года)",
+				"creators": [
+					{
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Правительство РФ",
+						"creatorType": "author"
+					}
+				],
+				"dateEnacted": "12/14/2018",
+				"code": "ТР (Технический регламент)",
+				"codeNumber": "ТР (Технический регламент)",
+				"extra": "CNTDID: 902243701\nPublished: Собрание законодательства Российской Федерации, N 45, 08.11.2010, ст.5853\ndateEnactedOriginal: 11/08/2011\ndateApproved: 10/29/2010",
+				"language": "Russian",
+				"publicLawNumber": "870",
+				"url": "http://docs.cntd.ru/document/902243701",
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
+				"tags": [],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://docs.cntd.ru/document/902206841",
+		"items": [
+			{
+				"itemType": "statute",
+				"nameOfAct": "Требования к безопасности продуктов детского, диетического и лечебно-профилактического питания",
+				"creators": [
+					{
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Правительство Республики Казахстан",
+						"creatorType": "author"
+					}
+				],
+				"dateEnacted": "7/01/2010",
+				"code": "ТР (Технический регламент)",
+				"codeNumber": "ТР (Технический регламент)",
+				"extra": "CNTDID: 902206841\nPublished: Собрание законодательства Российской Федерации, N 11, 15.03.2010, ст.1221\ndateEnactedOriginal: 7/01/2010\ndateApproved: 5/04/2008",
+				"language": "Russian",
+				"publicLawNumber": "411",
+				"url": "http://docs.cntd.ru/document/902206841",
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
+				"tags": [],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://docs.cntd.ru/document/1200019270",
+		"items": [
+			{
+				"itemType": "statute",
+				"nameOfAct": "Проектирование систем противопожарной защиты резервуарных парков Госкомрезерва России",
+				"creators": [
+					{
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Госкомрезерв России",
+						"creatorType": "author"
+					}
+				],
+				"dateEnacted": "11/13/1998",
+				"code": "СП (Свод правил)",
+				"codeNumber": "СП (Свод правил)",
+				"extra": "CNTDID: 1200019270\nPublished: официальное издание ## М., 1998 год\ndateEnactedOriginal: 11/13/1998\ndateApproved: 11/13/1998",
+				"language": "Russian",
+				"publicLawNumber": "21-104-98",
+				"url": "http://docs.cntd.ru/document/1200019270",
+				"attachments": [
+					{
+						"title": "Full Text PDF",
+						"mimeType": "application/pdf"
+					}
+				],
+				"tags": [],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "http://docs.cntd.ru/document/871001022",
+		"items": [
+			{
+				"itemType": "statute",
+				"nameOfAct": "СНиП 21-01-97 Пожарная безопасность зданий и сооружений (с Изменениями N 1, 2)",
+				"creators": [
+					{
+						"fieldMode": 1,
+						"firstName": "",
+						"lastName": "Минстрой России",
+						"creatorType": "author"
+					}
+				],
+				"dateEnacted": "7/19/2002",
+				"code": "СП (Свод правил)",
+				"codeNumber": "СНиП",
+				"extra": "CNTDID: 871001022\nPublished: официальное издание ## Госстрой России. - М.: ГУП ЦПП, 2002 год\ndateEnactedOriginal: 1/01/1998\ndateApproved: 2/13/1997",
+				"language": "Russian",
+				"publicLawNumber": "21-01-97 ## 112.13330.2011",
+				"url": "http://docs.cntd.ru/document/871001022",
 				"attachments": [
 					{
 						"title": "Full Text PDF",
