@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-20 15:47:07"
+	"lastUpdated": "2020-04-20 16:41:23"
 }
 
 /**
@@ -65,6 +65,8 @@ const pdfStatus = {
 // Holds extracted metadata
 let metadata;
 let metahtml;
+let srcJSON;
+let srcHTML;
 
 let fieldMap = {
 	"Название документа": "title",
@@ -334,7 +336,7 @@ function scrapeMetadata(doc, url) {
 			mimeType: "application/pdf"
 		});
 	}
-
+	
 	if (metadata.notes) {
 		metadata.notes.forEach(note => zItem.notes.push(note));
 	}
@@ -352,11 +354,11 @@ function parseMetadata(doc) {
 	let irow;
 	let descTable = doc.querySelector(filters.metadataTableCSS);
 	let descTableRows = descTable.rows;
-	let srcJSON = {};
 	metadata = {};
 	metahtml = {};
+	srcJSON = {};
 	metadata.notes = [];
-
+	
 	// Parse description table
 	for (irow = 0; irow < descTableRows.length; irow++) {
 		let rowCells = descTableRows[irow].cells;
@@ -367,14 +369,19 @@ function parseMetadata(doc) {
 		metadata[fieldName] = srcJSON[fieldNameRaw];
 		metahtml[fieldName] = rowCells[1].innerHTML;
 	}
+
+	srcJSON["Название документа"] = metahtml.title.replace(/(<br>)+/g, '\n').trim();
+	if (metahtml.publicDocNumber) {
+		srcJSON["Номер документа"] = metahtml.publicDocNumber.replace(/(<br>)+/g, '\n').trim();
+	}
 	metadata.notes.push(
 		JSON.stringify(srcJSON)
-			.replace(/(\\t)+/g, '\\n')
-			.replace(/ *(\\n)+/g, '\\n')
+			.replace(/(\\t)+/g, '\n').replace(/ *(\\n)+/g, '\n')
 	);
-	let srcHTML = descTable.outerHTML.trim();
+
+	let tableHTML = descTable.outerHTML.trim();
 	let indent = '    ';
-	srcHTML = srcHTML
+	tableHTML = tableHTML
 		.replace(/\n+/g, '<br>')
 		.replace(/(\s*<br>\s*)+/g, '<br>')
 		.replace(/><br>/g, '>')
@@ -385,9 +392,9 @@ function parseMetadata(doc) {
 		.replace(/<tr>\s*<\/tr>/g, '')
 		.replace(/\s*<\/tbody>/, '\n</tbody>')
 		.replace(/(:|(<br>)*)<\/td>/g, '</td>');
-	metadata.notes.push(srcHTML);
+	metadata.notes.push(tableHTML);
 }
-
+	
 
 function getType() {
 	let subType;
@@ -453,11 +460,11 @@ function adjustMetadata(doc) {
 		There are issues with missing "\n" (innerText) in place of <br> (innerHTML)
 		possibly due to the "doc" format passed by the tester, hence the extra code.
 	*/
+	metadata.title = metahtml.title.replace(/<br>/g, '\n').trim().replace(/[\n]+/g, ' ## ');
 	if (metadata.publicDocNumber) {
 		metadata.publicDocNumber = metahtml.publicDocNumber
 			.replace(/<br>/g, '\n').trim().replace(/[\n]+/g, ' ## ');
 	}
-	metadata.title = metahtml.title.replace(/<br>/g, '\n').trim().replace(/[\n]+/g, ' ## ');
 	if (metadata.authority) metadata.authority = metadata.authority.replace(/[\t\n]+/g, ' ## ');
 
 	/*
