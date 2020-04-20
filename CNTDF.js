@@ -65,8 +65,6 @@ const pdfStatus = {
 // Holds extracted metadata
 let metadata;
 let metahtml;
-let srcJSON;
-let srcHTML;
 
 let fieldMap = {
 	"Название документа": "title",
@@ -336,7 +334,7 @@ function scrapeMetadata(doc, url) {
 			mimeType: "application/pdf"
 		});
 	}
-	
+
 	if (metadata.notes) {
 		metadata.notes.forEach(note => zItem.notes.push(note));
 	}
@@ -354,11 +352,11 @@ function parseMetadata(doc) {
 	let irow;
 	let descTable = doc.querySelector(filters.metadataTableCSS);
 	let descTableRows = descTable.rows;
+	let srcJSON = {};
 	metadata = {};
 	metahtml = {};
-	srcJSON = {};
 	metadata.notes = [];
-	
+
 	// Parse description table
 	for (irow = 0; irow < descTableRows.length; irow++) {
 		let rowCells = descTableRows[irow].cells;
@@ -371,11 +369,12 @@ function parseMetadata(doc) {
 	}
 	metadata.notes.push(
 		JSON.stringify(srcJSON)
-			.replace(/(\\t)+/g, '\\n').replace(/ *(\\n)+/g, '\\n')
+			.replace(/(\\t)+/g, '\\n')
+			.replace(/ *(\\n)+/g, '\\n')
 	);
-	let tableHTML = descTable.outerHTML.trim();
+	let srcHTML = descTable.outerHTML.trim();
 	let indent = '    ';
-	tableHTML = tableHTML
+	srcHTML = srcHTML
 		.replace(/\n+/g, '<br>')
 		.replace(/(\s*<br>\s*)+/g, '<br>')
 		.replace(/><br>/g, '>')
@@ -386,9 +385,9 @@ function parseMetadata(doc) {
 		.replace(/<tr>\s*<\/tr>/g, '')
 		.replace(/\s*<\/tbody>/, '\n</tbody>')
 		.replace(/(:|(<br>)*)<\/td>/g, '</td>');
-	metadata.notes.push(tableHTML);
+	metadata.notes.push(srcHTML);
 }
-	
+
 
 function getType() {
 	let subType;
