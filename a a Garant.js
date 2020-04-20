@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-20 23:10:44"
+	"lastUpdated": "2020-04-20 23:56:12"
 }
 
 /**
@@ -37,26 +37,15 @@
 
 /*
 	Search interfaces:
-	GET http://www.consultant.ru/search/?q=<QUERY>
-	GET http://www.consultant.ru/cons/cgi/online.cgi?req=card&page=splus&splusFind=<QUERY>
+		POST http://ivo.garant.ru/search/advanced/run
+			Search results: http://ivo.garant.ru/#/advancedsearch/
+		GET http://ivo.garant.ru/#/basesearch/<QUERY>
 	
 	Individual documents
-	TOC:	http://www.consultant.ru/document/cons_doc_LAW_<DOC_ID1>
-	Full:		http://www.consultant.ru/cons/cgi/online.cgi?req=doc&base=<DB>&n=<DOC_ID2>
-		DB=LAW	http://www.consultant.ru/cons/cgi/online.cgi?req=doc&base=LAW&n=<DOC_ID2>
-		DB=EXP	http://www.consultant.ru/cons/cgi/online.cgi?req=doc&base=EXP&n=<DOC_ID2>
-		Other DBs appear to be only available via subscription
-	The first interface may only be available for a subset of the database.
-	
+		http://ivo.garant.ru/#/document/<DOC_ID>
+		Metadata:
+			selector:	"div.x-component.title.x-box-item.x-component-default"
+			attribute:	"data-qtip"
+			
 	Full text:
-	GET http://www.consultant.ru/cons/cgi/online.cgi?req=export&type=<TYPE>&base=<DB>&n=<DOC_ID2>
-	type: pdf rtf html
-	Example: http://www.consultant.ru/cons/cgi/online.cgi?req=export&type=pdf&base=LAW&n=349217
-	
-	=======================================================================================
-	
-	Search results for http://www.consultant.ru/cons/cgi/online.cgi?req=card&page=splus&splusFind=<QUERY>
-	Table CSS:		"div.listPaneContent"
-	Href items: 	"div.listPaneContent > div.row > a"
-	Doc details:	"div.listPaneContent > div.row > a > div > div.content.adts > div.extraText > div.text"
 */
