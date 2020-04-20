@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-03-09 18:50:52"
+	"lastUpdated": "2020-04-20 08:08:54"
 }
 
 /*
@@ -256,12 +256,12 @@ function scrape(doc, url) {
 var testCases = [
 	{
 		"type": "web",
-		"url": "https://elibrary.ru/org_items.asp?orgsid=3326",
+		"url": "https://www.elibrary.ru/org_items.asp?orgsid=3326",
 		"items": "multiple"
 	},
 	{
 		"type": "web",
-		"url": "https://elibrary.ru/item.asp?id=9541154",
+		"url": "https://www.elibrary.ru/item.asp?id=9541154",
 		"items": [
 			{
 				"itemType": "journalArticle",
@@ -280,7 +280,7 @@ var testCases = [
 				"libraryCatalog": "eLibrary.ru",
 				"pages": "40-58",
 				"publicationTitle": "Вестник Московского Университета. Серия 13: Востоковедение",
-				"url": "https://elibrary.ru/item.asp?id=9541154",
+				"url": "https://www.elibrary.ru/item.asp?id=9541154",
 				"attachments": [],
 				"tags": [],
 				"notes": [],
@@ -290,7 +290,7 @@ var testCases = [
 	},
 	{
 		"type": "web",
-		"url": "https://elibrary.ru/item.asp?id=17339044",
+		"url": "https://www.elibrary.ru/item.asp?id=17339044",
 		"items": [
 			{
 				"itemType": "journalArticle",
@@ -330,7 +330,7 @@ var testCases = [
 				"libraryCatalog": "eLibrary.ru",
 				"pages": "1-10",
 				"publicationTitle": "Плодоводство И Виноградарство Юга России",
-				"url": "https://elibrary.ru/item.asp?id=17339044",
+				"url": "https://www.elibrary.ru/item.asp?id=17339044",
 				"attachments": [],
 				"tags": [
 					{
@@ -365,7 +365,7 @@ var testCases = [
 	},
 	{
 		"type": "web",
-		"url": "https://elibrary.ru/item.asp?id=21640363",
+		"url": "https://www.elibrary.ru/item.asp?id=21640363",
 		"items": [
 			{
 				"itemType": "journalArticle",
@@ -398,7 +398,7 @@ var testCases = [
 				"language": "ru",
 				"libraryCatalog": "eLibrary.ru",
 				"pages": "83",
-				"url": "https://elibrary.ru/item.asp?id=21640363",
+				"url": "https://www.elibrary.ru/item.asp?id=21640363",
 				"attachments": [],
 				"tags": [],
 				"notes": [],
@@ -408,7 +408,7 @@ var testCases = [
 	},
 	{
 		"type": "web",
-		"url": "https://elibrary.ru/item.asp?id=21665052",
+		"url": "https://www.elibrary.ru/item.asp?id=21665052",
 		"items": [
 			{
 				"itemType": "journalArticle",
@@ -425,7 +425,7 @@ var testCases = [
 				"issue": "0220510249",
 				"language": "ru",
 				"libraryCatalog": "eLibrary.ru",
-				"url": "https://elibrary.ru/item.asp?id=21665052",
+				"url": "https://www.elibrary.ru/item.asp?id=21665052",
 				"attachments": [],
 				"tags": [
 					{
@@ -463,7 +463,7 @@ var testCases = [
 	},
 	{
 		"type": "web",
-		"url": "https://elibrary.ru/item.asp?id=20028198",
+		"url": "https://www.elibrary.ru/item.asp?id=20028198",
 		"items": [
 			{
 				"itemType": "book",
@@ -483,7 +483,7 @@ var testCases = [
 				"language": "ru",
 				"libraryCatalog": "eLibrary.ru",
 				"publisher": "Изд-во Политехнического университета",
-				"url": "https://elibrary.ru/item.asp?id=20028198",
+				"url": "https://www.elibrary.ru/item.asp?id=20028198",
 				"attachments": [],
 				"tags": [
 					{
@@ -530,7 +530,7 @@ var testCases = [
 	},
 	{
 		"type": "web",
-		"url": "https://elibrary.ru/item.asp?id=38164350",
+		"url": "https://www.elibrary.ru/item.asp?id=38164350",
 		"items": [
 			{
 				"itemType": "journalArticle",
@@ -551,7 +551,7 @@ var testCases = [
 				"libraryCatalog": "eLibrary.ru",
 				"pages": "275-279",
 				"publicationTitle": "Доклады Академии Наук",
-				"url": "https://elibrary.ru/item.asp?id=38164350",
+				"url": "https://www.elibrary.ru/item.asp?id=38164350",
 				"volume": "486",
 				"attachments": [],
 				"tags": [
@@ -605,7 +605,7 @@ var testCases = [
 	},
 	{
 		"type": "web",
-		"url": "https://elibrary.ru/item.asp?id=30694319",
+		"url": "https://www.elibrary.ru/item.asp?id=30694319",
 		"items": [
 			{
 				"itemType": "conferencePaper",
@@ -637,7 +637,7 @@ var testCases = [
 				"language": "en",
 				"libraryCatalog": "eLibrary.ru",
 				"pages": "1-7",
-				"url": "https://elibrary.ru/item.asp?id=30694319",
+				"url": "https://www.elibrary.ru/item.asp?id=30694319",
 				"attachments": [],
 				"tags": [],
 				"notes": [],
@@ -647,7 +647,7 @@ var testCases = [
 	},
 	{
 		"type": "web",
-		"url": "https://elibrary.ru/item.asp?id=18310800",
+		"url": "https://www.elibrary.ru/item.asp?id=18310800",
 		"items": [
 			{
 				"itemType": "journalArticle",
@@ -726,7 +726,7 @@ var testCases = [
 				"libraryCatalog": "eLibrary.ru",
 				"pages": "10-20",
 				"publicationTitle": "Мир Евразии",
-				"url": "https://elibrary.ru/item.asp?id=18310800",
+				"url": "https://www.elibrary.ru/item.asp?id=18310800",
 				"attachments": [],
 				"tags": [
 					{
