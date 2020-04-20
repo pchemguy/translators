@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-20 18:47:42"
+	"lastUpdated": "2020-04-20 22:59:34"
 }
 
 /**
@@ -33,4 +33,30 @@
 	along with Zotero. If not, see <http://www.gnu.org/licenses/>.
 
 	***** END LICENSE BLOCK *****
+*/
+
+/*
+	Search interfaces:
+	GET http://www.consultant.ru/search/?q=<QUERY>
+	GET http://www.consultant.ru/cons/cgi/online.cgi?req=card&page=splus&splusFind=<QUERY>
+	
+	Individual documents
+	TOC:	http://www.consultant.ru/document/cons_doc_LAW_<DOC_ID1>
+	Full:		http://www.consultant.ru/cons/cgi/online.cgi?req=doc&base=<DB>&n=<DOC_ID2>
+		DB=LAW	http://www.consultant.ru/cons/cgi/online.cgi?req=doc&base=LAW&n=<DOC_ID2>
+		DB=EXP	http://www.consultant.ru/cons/cgi/online.cgi?req=doc&base=EXP&n=<DOC_ID2>
+		Other DBs appear to be only available via subscription
+	The first interface may only be available for a subset of the database.
+	
+	Full text:
+	GET http://www.consultant.ru/cons/cgi/online.cgi?req=export&type=<TYPE>&base=<DB>&n=<DOC_ID2>
+	type: pdf rtf html
+	Example: http://www.consultant.ru/cons/cgi/online.cgi?req=export&type=pdf&base=LAW&n=349217
+	
+	=======================================================================================
+	
+	Search results for http://www.consultant.ru/cons/cgi/online.cgi?req=card&page=splus&splusFind=<QUERY>
+	Table CSS:		"div.listPaneContent"
+	Href items: 	"div.listPaneContent > div.row > a"
+	Doc details:	"div.listPaneContent > div.row > a > div > div.content.adts > div.extraText > div.text"
 */
