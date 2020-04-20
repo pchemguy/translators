@@ -37,7 +37,7 @@
 
 /**
 	A provider of legislative, technical, and regulatory documents in Russian.
-	With primery focus on documents produced by Russian authorities, CNTD also
+	With primary focus on documents produced by Russian authorities, CNTD also
 	serves translated into Russian foreign and international documents applicable
 	to activities in Russia.
 */
@@ -65,8 +65,6 @@ const pdfStatus = {
 // Holds extracted metadata
 let metadata;
 let metahtml;
-let srcJSON;
-let srcHTML;
 
 let fieldMap = {
 	"Название документа": "title",
@@ -127,7 +125,7 @@ const legalTypes = ["Указ", "Приказ", "Постановление", "�
 	There are records with no document type defined. When such a type can be
 	defined based on document title, an array element is added here, which is an
 	arrayed pair of "pattern" to be matched against the title and "custom type".
-	Additionaly, a corresponding descriptor is added to "docTypes".
+	Additionally, a corresponding descriptor is added to "docTypes".
 */
 const docTypePatterns = [
 	[/^Государственная поверочная схема для/, "Государственная поверочная схема"],
@@ -293,7 +291,7 @@ function scrapeMetadata(doc, url) {
 	zItem.url = url;
 	zItem.language = 'Russian';
 
-	// For statute, the date/dateEncated field is set to the last amendment
+	// For statute, the date/dateEnacted field is set to the last amendment
 	// date. Original enactment date is stored in the extra field.
 	zItem.date = metadata.dateAmended ? metadata.dateAmended : metadata.dateEnacted;
 
@@ -336,7 +334,7 @@ function scrapeMetadata(doc, url) {
 			mimeType: "application/pdf"
 		});
 	}
-	
+
 	if (metadata.notes) {
 		metadata.notes.forEach(note => zItem.notes.push(note));
 	}
@@ -354,11 +352,11 @@ function parseMetadata(doc) {
 	let irow;
 	let descTable = doc.querySelector(filters.metadataTableCSS);
 	let descTableRows = descTable.rows;
+	let srcJSON = {};
 	metadata = {};
 	metahtml = {};
-	srcJSON = {};
 	metadata.notes = [];
-	
+
 	// Parse description table
 	for (irow = 0; irow < descTableRows.length; irow++) {
 		let rowCells = descTableRows[irow].cells;
@@ -394,7 +392,7 @@ function parseMetadata(doc) {
 		.replace(/(:|(<br>)*)<\/td>/g, '</td>');
 	metadata.notes.push(tableHTML);
 }
-	
+
 
 function getType() {
 	let subType;
