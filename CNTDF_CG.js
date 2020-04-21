@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-21 22:55:43"
+	"lastUpdated": "2020-04-21 23:46:45"
 }
 
 /**
@@ -117,6 +117,7 @@ let fieldMap = {
 	"Дата редакции": "dateAmended",
 	"Дата окончания действия": "dateRevoked"
 };
+let fieldMapRev = Object.assign({}, ...Object.entries(fieldMap).map(([a, b]) => ({ [b]: a })));
 
 /**
 	Custom document types
@@ -483,6 +484,7 @@ function parseMetadata(doc) {
 		.replace(/ *(\\t)+/g, '\n')
 		.replace(/ *(\\n)+/g, '\n')
 		.replace(/ *(\n)+/g, '\n');
+	
 	metadata.notes.push(srcText);
 
 	let tableHTML = descTable.outerHTML.trim();
@@ -777,6 +779,18 @@ function adjustMetadata(doc) {
 	if (metadata.dateAmended) metadata.dateAmended = parseDate(metadata.dateAmended);
 	if (metadata.dateRevoked) metadata.dateRevoked = parseDate(metadata.dateRevoked);
 	if (!metadata.dateEnacted) metadata.dateEnacted = metadata.dateApproved;
+
+	metadata.queries = {};
+	let query = [];
+	let srcJSON = JSON.parse(metadata.notes[0].replace(/\n/g, '|'));
+	query.push(srcJSON[fieldMapRev.docType]);
+	let dateApproved = srcJSON[fieldMapRev.dateApproved];
+	if (dateApproved) query.push('от ' + dateApproved);
+	query.push('N ' + srcJSON[fieldMapRev.publicDocNumber]);
+	metadata.queries.notitle = query.join(' ');
+	query.push(srcJSON[fieldMapRev.title]);
+	metadata.queries.title = query.join(' ');
+	Z.debug(metadata.queries);
 }
 
 
