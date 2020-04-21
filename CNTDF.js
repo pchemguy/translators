@@ -40,6 +40,9 @@
 	With primary focus on documents produced by Russian authorities, CNTD also
 	serves translated into Russian foreign and international documents applicable
 	to activities in Russia.
+
+	Search interface:
+		http://docs.cntd.ru/search/intellectual/q/<QUERY>
 */
 
 const filters = {
