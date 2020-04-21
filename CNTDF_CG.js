@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-21 09:18:03"
+	"lastUpdated": "2020-04-21 21:40:43"
 }
 
 /**
@@ -96,6 +96,10 @@ const pdfStatus = {
 	inprocess: -1,
 	ready: 1,
 };
+
+// Sync object used to ensure that the first asynchronous stages are completed
+// before Zotero item is populated.
+let asyncArbiter;
 
 // Holds extracted metadata
 let metadata;
@@ -214,7 +218,6 @@ function detectWeb(doc, url) {
 	if (pathname.match(recordPattern)) {
 		parseMetadata(doc);
 		getType();
-		metadata.CNTDID = pathname.match(recordPattern)[1];
 		return metadata.itemType;
 	}
 
@@ -238,7 +241,7 @@ function doWeb(doc, url) {
 	}
 	else {
 		adjustMetadata(doc);
-		scrape(doc, url);
+		dispatch(doc, url);
 	}
 }
 
@@ -251,12 +254,64 @@ function getSearchResult(doc, _url) {
 }
 
 
+function dispatch(doc, url) {
+	Z.debug('Entered scrape(doc, url)');
+	initArbitrateZItem();
+	let requestOwnership = true;
+	asyncCNTD(doc, url, requestOwnership);
+}
+
+
+function initArbitrateZItem() {
+	asyncArbiter = {
+		doneCNTD: false,
+		doneConsultant: true,
+		doneGarant: true,
+		itemComplete: false,
+		owner: '',
+		waitInc: 1000,
+		maxCount: { CNTD: 10, Garant: 10, Consultant: 10 } 
+	};
+}
+
+
+function arbitrateZItem(doc, url, caller, requestOwnership = false) {
+	Z.debug('Waiting for completion of asynchronous steps... Caller: ' + caller);
+	// Check if time out condition is reached
+	if (!caller) { Z.debug('Caller must be specified!'); return; }
+	if (asyncArbiter.maxCount[caller] <= 0) {
+		Z.debug('Retrieval of data timed out.');
+		populateMetadata(doc, url);
+	}
+	
+	asyncArbiter['done' + caller] = true;
+	if (requestOwnership && !asyncArbiter.owner) asyncArbiter.owner = caller;
+	if (asyncArbiter.owner == caller) {
+		// Check for completion of individual async threads
+		if (!(asyncArbiter.doneCNTD && asyncArbiter.doneConsultant && asyncArbiter.doneGarant)) {
+			asyncArbiter.maxCount[caller]--;
+			setTimeout(arbitrateZItem, asyncArbiter.waitInc, doc, url, caller);
+		}
+		else { // All perquisite threads completed
+			populateMetadata(doc, url);
+		}
+	}
+	else {
+		if (!(asyncArbiter.itemComplete)) {
+			setTimeout(arbitrateZItem, asyncArbiter.waitInc, doc, url, caller);
+		}
+	}
+}
+
+
 /**
 	Checks whether full text pdf is available. If available, sends a POST request,
 	and waits for the "ready" status. Then calls routine constructing Zotero item.
 	In case of a time out or no pdf, "Zotero item" routine is called.
 */
-function scrape(doc, url) {
+function asyncCNTD(doc, url, requestOwnership = false) {
+	Z.debug('Entered asyncCNTD(doc, url)');
+	// Z.debug(metadata);
 	waitStep = 4000;
 	waitCount = 40;
 
@@ -268,7 +323,7 @@ function scrape(doc, url) {
 		ZU.doPost(postUrl, postData, waitforPDF);
 	}
 	else {
-		scrapeMetadata(doc, url);
+		arbitrateZItem(doc, url, 'CNTD', requestOwnership);
 	}
 
 	// Waits for the PDF "ready" status by pinging the server using GET requests
@@ -280,9 +335,9 @@ function scrape(doc, url) {
 					+ metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
 				ZU.doGet(getURL, checkforPDF);
 			}
-			else scrapeMetadata(doc, url);
+			else arbitrateZItem(doc, url, 'CNTD', requestOwnership);
 		}
-		else scrapeMetadata(doc, url);
+		else arbitrateZItem(doc, url, 'CNTD', requestOwnership);
 	}
 
 	// Checks server response. If PDF is not ready and the maximum retry count is
@@ -296,7 +351,7 @@ function scrape(doc, url) {
 				waitCount--;
 				if (waitCount <= 0) {
 					Z.debug('PDF request time out...');
-					scrapeMetadata(doc, url);
+					arbitrateZItem(doc, url, 'CNTD', requestOwnership);
 				}
 				else {
 					setTimeout(waitforPDF, waitStep, '', {});
@@ -304,17 +359,17 @@ function scrape(doc, url) {
 				break;
 			case 1:
 				metadata.pdfAvailable = true;
-				scrapeMetadata(doc, url);
+				arbitrateZItem(doc, url, 'CNTD', requestOwnership);
 				break;
 			default:
-				scrapeMetadata(doc, url);
+				arbitrateZItem(doc, url, 'CNTD', requestOwnership);
 		}
 	}
 }
 
 
 // Constructs Zotero item and populates it
-function scrapeMetadata(doc, url) {
+function populateMetadata(doc, url) {
 	let extra = [];
 	let zItem = new Zotero.Item(metadata.itemType);
 	// creator: {fieldMode: 1, firstName: "", lastName: "", creatorType: "author"};
@@ -381,6 +436,9 @@ function scrapeMetadata(doc, url) {
 	}
 
 	zItem.complete();
+	asyncArbiter.itemComplete = true;
+	Z.debug('zItem is complete...');
+	// Z.debug(asyncArbiter);
 }
 
 
@@ -390,6 +448,8 @@ function scrapeMetadata(doc, url) {
  *	@return {null}
  */
 function parseMetadata(doc) {
+	let pathname = doc.location.pathname;
+	let recordPattern = /^\/document\/([0-9]+)/;
 	let irow;
 	let descTable = doc.querySelector(filters.metadataTableCSS);
 	let descTableRows = descTable.rows;
@@ -397,6 +457,8 @@ function parseMetadata(doc) {
 	metadata = {};
 	metahtml = {};
 	metadata.notes = [];
+
+	metadata.CNTDID = pathname.match(recordPattern)[1];
 
 	// Parse description table
 	for (irow = 0; irow < descTableRows.length; irow++) {
