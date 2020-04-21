@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2020-04-20 23:56:12"
+	"lastUpdated": "2020-04-21 01:22:17"
 }
 
 /**
@@ -40,12 +40,15 @@
 		POST http://ivo.garant.ru/search/advanced/run
 			Search results: http://ivo.garant.ru/#/advancedsearch/
 		GET http://ivo.garant.ru/#/basesearch/<QUERY>
-	
+			items:		"div.wrapper > div.wrapperInner > ul > li > a" - href
+			details:	"div.wrapper > div.wrapperInner > ul > li > a > div > p"
+			
 	Individual documents
 		http://ivo.garant.ru/#/document/<DOC_ID>
 		Metadata:
 			selector:	"div.x-component.title.x-box-item.x-component-default"
 			attribute:	"data-qtip"
 			
-	Full text:
+	Full text (RTF):
+	http://ivo.garant.ru/document/rtf?id=<DOC_ID>
 */
