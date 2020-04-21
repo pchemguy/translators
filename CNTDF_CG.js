@@ -1,6 +1,6 @@
 {
-	"translatorID": "71a95c3d-e730-4fd9-83c3-faf7e0576346",
-	"label": "CNTDF",
+	"translatorID": "706d7e27-bf3f-4317-a6fe-cb13745b527c",
+	"label": "CNTDF_CG",
 	"creator": "PChemGuy",
 	"target": "https?://docs.cntd.ru/",
 	"minVersion": "3.0",
@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-21 08:31:32"
+	"lastUpdated": "2020-04-21 08:37:35"
 }
 
 /**
