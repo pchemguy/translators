@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-21 08:56:28"
+	"lastUpdated": "2020-04-21 09:18:03"
 }
 
 /**
@@ -273,10 +273,16 @@ function scrape(doc, url) {
 
 	// Waits for the PDF "ready" status by pinging the server using GET requests
 	function waitforPDF(responseText, _xmlhttp) {
-		if (responseText) Z.debug('PDF request response: ' + responseText);
-		let getURL = 'http://docs.cntd.ru/pdf/get/?id='
-			+ metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
-		ZU.doGet(getURL, checkforPDF);
+		if (responseText) {
+			Z.debug('PDF request response: ' + responseText);
+			if (responseText.includes('ready')) {
+				let getURL = 'http://docs.cntd.ru/pdf/get/?id='
+					+ metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
+				ZU.doGet(getURL, checkforPDF);
+			}
+			else scrapeMetadata(doc, url);
+		}
+		else scrapeMetadata(doc, url);
 	}
 
 	// Checks server response. If PDF is not ready and the maximum retry count is
@@ -403,6 +409,7 @@ function parseMetadata(doc) {
 		metahtml[fieldName] = rowCells[1].innerHTML;
 	}
 
+	// Prepare source metadata as stringified JSON and html
 	srcJSON["Название документа"] = metahtml.title.replace(/(<br>)+/g, '\n').trim();
 	if (metahtml.publicDocNumber) {
 		srcJSON["Номер документа"] = metahtml.publicDocNumber.replace(/(<br>)+/g, '\n').trim();
@@ -745,7 +752,7 @@ var testCases = [
 				"date": "10/01/2019",
 				"extra": "CNTDID: 1200128307\nPublished: Официальное издание. М.: Стандартинформ, 2019 год\ndateEnactedOriginal: 7/01/2016\ndateApproved: 12/11/2015",
 				"language": "Russian",
-				"libraryCatalog": "CNTDF",
+				"libraryCatalog": "CNTDF_CG",
 				"reportNumber": "1.0-2015",
 				"reportType": "ГОСТ",
 				"url": "http://docs.cntd.ru/document/1200128307",
@@ -868,7 +875,7 @@ var testCases = [
 				"date": "11/22/2013",
 				"extra": "CNTDID: 1200102193\nPublished: официальное издание ## М.: Стандартинформ, 2013 год\ndateEnactedOriginal: 7/01/2013\ndateApproved: 11/23/2012",
 				"language": "Russian",
-				"libraryCatalog": "CNTDF",
+				"libraryCatalog": "CNTDF_CG",
 				"reportNumber": "1.0-2012",
 				"reportType": "ГОСТ Р",
 				"url": "http://docs.cntd.ru/document/1200102193",
@@ -989,7 +996,7 @@ var testCases = [
 				"date": "8/01/2006",
 				"extra": "CNTDID: 1200003915\nPublished: официальное издание ## Шайбы и контрящие элементы. Технические условия. Конструкция и размеры: Сб. стандартов. - М.: Стандартинформ, 2006 год\ndateEnactedOriginal: 1/01/1979\ndateApproved: 6/26/1978",
 				"language": "Russian",
-				"libraryCatalog": "CNTDF",
+				"libraryCatalog": "CNTDF_CG",
 				"reportNumber": "11371-78",
 				"reportType": "ГОСТ",
 				"url": "http://docs.cntd.ru/document/1200003915",
@@ -1069,7 +1076,7 @@ var testCases = [
 				"date": "6/01/2020",
 				"extra": "CNTDID: 437253093\ndateEnactedOriginal: 6/01/2020\ndateApproved: 3/27/2020",
 				"language": "Russian",
-				"libraryCatalog": "CNTDF",
+				"libraryCatalog": "CNTDF_CG",
 				"reportNumber": "54400-2020",
 				"reportType": "ГОСТ Р",
 				"url": "http://docs.cntd.ru/document/437253093",
@@ -1111,7 +1118,7 @@ var testCases = [
 				"date": "6/01/2020",
 				"extra": "CNTDID: 1200170667\nPublished: Официальное издание. М.: Стандартинформ, 2020\ndateEnactedOriginal: 6/01/2020\ndateApproved: 12/25/2019",
 				"language": "Russian",
-				"libraryCatalog": "CNTDF",
+				"libraryCatalog": "CNTDF_CG",
 				"reportNumber": "58782-2019",
 				"reportType": "ГОСТ Р",
 				"url": "http://docs.cntd.ru/document/1200170667",
