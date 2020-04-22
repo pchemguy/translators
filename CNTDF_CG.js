@@ -9,73 +9,92 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-22 06:11:39"
+	"lastUpdated": "2020-04-22 13:53:47"
 }
 
 /**
-	***** BEGIN LICENSE BLOCK *****
-
-	Copyright В© 2020 PChemGuy
-
-	This file is part of Zotero.
-
-	Zotero is free software: you can redistribute it and/or modify
-	it under the terms of the GNU Affero General Public License as published by
-	the Free Software Foundation, either version 3 of the License, or
-	(at your option) any later version.
-
-	Zotero is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-	GNU Affero General Public License for more details.
-
-	You should have received a copy of the GNU Affero General Public License
-	along with Zotero. If not, see <http://www.gnu.org/licenses/>.
-
-	***** END LICENSE BLOCK *****
-*/
+ * ***** BEGIN LICENSE BLOCK *****
+ *
+ * Copyright В© 2020 PChemGuy
+ *
+ * This file is part of Zotero.
+ *
+ * Zotero is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Zotero is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with Zotero. If not, see <http://www.gnu.org/licenses/>.
+ *
+ * ***** END LICENSE BLOCK *****
+ */
 
 /**
-	CNTD
-		Search interface:
-			http://docs.cntd.ru/search/intellectual/q/<QUERY>
+ * Processing is done in three stages.
+ *	1) metadata extraction, cleanup, and population of metadata object
+ *			This stage is executed synchronously starting from the doWeb routine.
+ *  2) supplementary POST/GET requests
+ *			This stage incroporates additional asynchronous calls necessary to
+ *		collect attachment information and process supplementary URLs. Metadata
+ *		extraction for supplementary URLs also performed at this stage as necessary.
+ *			After the first stage is completed, execution is transfered to the
+ *		asynchronous arbiter, which ensures that all additional ansychronous
+ *		calls are completed before the last stage. It also ensures that the last
+ *		stage is executed only once. The first thread requesting mutex ownership/
+ *		pass-through privilege is granted such a request. The remianing threads
+ *		either simply return control or wait in an asynchronous loop for the
+ *		completion of the third stage.
+ *	3) creation and population of Zotero item
+ *			Zotero item is created and populated here.
+ */
 
-	Consultant
-		Search interfaces:
-			GET http://www.consultant.ru/search/?q=<QUERY>
-			GET http://www.consultant.ru/cons/cgi/online.cgi?req=card&page=splus&splusFind=<QUERY>
-		
-		Individual documents
-			TOC:	http://www.consultant.ru/document/cons_doc_LAW_<DOC_ID1>
-			Full:		http://www.consultant.ru/cons/cgi/online.cgi?req=doc&base=<DB>&n=<DOC_ID2>
-				DB=LAW	http://www.consultant.ru/cons/cgi/online.cgi?req=doc&base=LAW&n=<DOC_ID2>
-				DB=EXP	http://www.consultant.ru/cons/cgi/online.cgi?req=doc&base=EXP&n=<DOC_ID2>
-				Other DBs appear to be only available via subscription
-			The first interface may only be available for a subset of the database.
-		
-		Full text:
-			GET http://www.consultant.ru/cons/cgi/online.cgi?req=export&type=<TYPE>&base=<DB>&n=<DOC_ID2>
-			type: pdf rtf html
-			Example: http://www.consultant.ru/cons/cgi/online.cgi?req=export&type=pdf&base=LAW&n=349217
-			
-	Garant
-		Search interfaces:
-			POST http://ivo.garant.ru/search/advanced/run
-				Search results: http://ivo.garant.ru/#/advancedsearch/
-			GET http://ivo.garant.ru/#/basesearch/<QUERY>
-				items:		"div.wrapper > div.wrapperInner > ul > li > a" - href
-				details:	"div.wrapper > div.wrapperInner > ul > li > a > div > p"
-				
-		Individual documents
-			http://ivo.garant.ru/#/document/<DOC_ID>
-			Metadata:
-				selector:	"div.x-component.title.x-box-item.x-component-default"
-				attribute:	"data-qtip"
-				
-		Full text (RTF):
-			http://ivo.garant.ru/document/rtf?id=<DOC_ID>
-
-*/
+/**
+ * CNTD
+ *	Search interface:
+ *		http://docs.cntd.ru/search/intellectual/q/<QUERY>
+ *
+ * Consultant
+ * 	Search interfaces:
+ * 		GET http://www.consultant.ru/search/?q=<QUERY>
+ * 		GET http://www.consultant.ru/cons/cgi/online.cgi?req=card&page=splus&splusFind=<QUERY>
+ *
+ * 	Individual documents
+ * 		TOC:	http://www.consultant.ru/document/cons_doc_LAW_<DOC_ID1>
+ * 		Full:		http://www.consultant.ru/cons/cgi/online.cgi?req=doc&base=<DB>&n=<DOC_ID2>
+ * 			DB=LAW	http://www.consultant.ru/cons/cgi/online.cgi?req=doc&base=LAW&n=<DOC_ID2>
+ * 			DB=EXP	http://www.consultant.ru/cons/cgi/online.cgi?req=doc&base=EXP&n=<DOC_ID2>
+ * 			Other DBs appear to be only available via subscription
+ * 		The first interface may only be available for a subset of the database.
+ *
+ * 	Full text:
+ * 		GET http://www.consultant.ru/cons/cgi/online.cgi?req=export&type=<TYPE>&base=<DB>&n=<DOC_ID2>
+ * 		type: pdf rtf html
+ * 		Example: http://www.consultant.ru/cons/cgi/online.cgi?req=export&type=pdf&base=LAW&n=349217
+ *
+ * Garant
+ * 	Search interfaces:
+ * 		POST http://ivo.garant.ru/search/advanced/run
+ * 			Search results: http://ivo.garant.ru/#/advancedsearch/
+ * 		GET http://ivo.garant.ru/#/basesearch/<QUERY>
+ * 			items:		"div.wrapper > div.wrapperInner > ul > li > a" - href
+ * 			details:	"div.wrapper > div.wrapperInner > ul > li > a > div > p"
+ *
+ * 	Individual documents
+ * 		http://ivo.garant.ru/#/document/<DOC_ID>
+ * 		Metadata:
+ * 			selector:	"div.x-component.title.x-box-item.x-component-default"
+ * 			attribute:	"data-qtip"
+ *
+ * 	Full text (RTF):
+ * 		http://ivo.garant.ru/document/rtf?id=<DOC_ID>
+ *
+ */
 
 const filters = {
 	metadataTableCSS: "div#tab-content2-low > div.document > table.status",
@@ -117,18 +136,20 @@ let fieldMap = {
 	"Дата редакции": "dateAmended",
 	"Дата окончания действия": "dateRevoked"
 };
+
+// Inverted fieldMap mapping object
 let fieldMapRev = Object.assign({}, ...Object.entries(fieldMap).map(([a, b]) => ({ [b]: a })));
 
 /**
-	Custom document types
-	Each custom type consists of:
-		key:		user facing original type name
-		"type": 	specific subtype that could be used for coding purposes
-		"itemType": zotero item type
-		"short":	user facing shortened type name
-		"abbr":		user facing type name abbreviation
-		"tags":		tags to be added
-*/
+ * Custom document types
+ * Each custom type consists of:
+ *	key:		user facing original type name
+ *	"type": 	specific subtype that could be used for coding purposes
+ *	"itemType": zotero item type
+ *	"short":	user facing shortened type name
+ *	"abbr":		user facing type name abbreviation
+ *	"tags":		tags to be added
+ */
 const docTypes = {
 	ГОСТ: { type: "standard", itemType: "report", short: "ГОСТ", abbr: "ГОСТ", tags: ['standard', 'GOST'] },
 	"ГОСТ Р": { type: "standard", itemType: "report", short: "ГОСТ Р", abbr: "ГОСТ Р", tags: ['standard', 'GOST'] },
@@ -162,11 +183,11 @@ const docTypes = {
 const legalTypes = ["Указ", "Приказ", "Постановление", "Распоряжение"];
 
 /**
-	There are records with no document type defined. When such a type can be
-	defined based on document title, an array element is added here, which is an
-	arrayed pair of "pattern" to be matched against the title and "custom type".
-	Additionally, a corresponding descriptor is added to "docTypes".
-*/
+ * There are records with no document type defined. When such a type can be
+ * defined based on document title, an array element is added here, which is an
+ * arrayed pair of "pattern" to be matched against the title and "custom type".
+ * Additionally, a corresponding descriptor is added to "docTypes".
+ */
 const docTypePatterns = [
 	[/^Государственная поверочная схема для/, "Государственная поверочная схема"],
 	[/^Методические рекомендации /, "МР (Методические рекомендации)"],
@@ -254,67 +275,92 @@ function getSearchResult(doc, _url) {
 	return records;
 }
 
+/**
+ * =============================================================================
+ * ---------------------------------- STAGE 2 ----------------------------------
+ * Asynchronous arbiter routines
+ * =============================================================================
+ */
 
+// Starts Stage 2 branches - threads processing the target and supplementary URLs
 function dispatch(doc, url) {
-	Z.debug('Entered scrape(doc, url)');
+	Z.debug('Entered dispatch(doc, url)');
 	initArbitrateZItem();
+	// Z.debug(asyncArbiter);
 	let requestOwnership = true;
 	asyncCNTD(doc, url, requestOwnership);
+	requestOwnership = false;
+	asyncGarant(requestOwnership);
 }
 
 
+// Initializes asynchronous arbiter
 function initArbitrateZItem() {
 	asyncArbiter = {
-		doneCNTD: false,
-		doneConsultant: true,
-		doneGarant: true,
-		itemComplete: false,
-		owner: '',
+		done: { CNTD: false, Garant: false, Consultant: false }, // Set to TRUE by the async arbiter
+		waitMaxCount: { CNTD: 10, Garant: 5, Consultant: 5 }, 
 		waitInc: 1000,
-		maxCount: { CNTD: 10, Garant: 10, Consultant: 10 } 
+		itemComplete: false,
+		owner: 'CNTD'			// If this is set, later request by individual threads are ignored
 	};
 }
 
 
+// Asynchronous arbiter (called by individual Stage 2 branches at their exit)
 function arbitrateZItem(doc, url, caller, requestOwnership = false) {
 	Z.debug('Waiting for completion of asynchronous steps... Caller: ' + caller);
+	Z.debug(asyncArbiter);
+	// Z.debug(arguments);
+	translate.decrementAsyncProcesses('CNTDCG#arbitrateZItem');
 	// Check if time out condition is reached
 	if (!caller) {
 		Z.debug('Caller must be specified!');
 		return;
 	}
-	if (asyncArbiter.maxCount[caller] <= 0) {
+	if (asyncArbiter.waitMaxCount[caller] <= 0) {
 		Z.debug('Retrieval of data timed out.');
 		populateMetadata(doc, url);
 	}
-	
-	asyncArbiter['done' + caller] = true;
-	if (requestOwnership && !asyncArbiter.owner) asyncArbiter.owner = caller;
-	if (asyncArbiter.owner == caller) {
-		// Check for completion of individual async threads
-		if (!(asyncArbiter.doneCNTD && asyncArbiter.doneConsultant && asyncArbiter.doneGarant)) {
-			asyncArbiter.maxCount[caller]--;
-			setTimeout(arbitrateZItem, asyncArbiter.waitInc, doc, url, caller);
-		}
-		else { // All perquisite threads completed
-			populateMetadata(doc, url);
-		}
-	}
 	else {
-		if (!(asyncArbiter.itemComplete)) {
-			setTimeout(arbitrateZItem, asyncArbiter.waitInc, doc, url, caller);
+		asyncArbiter.done[caller] = true;
+		asyncArbiter.waitMaxCount[caller]--;
+//		asyncArbiter.done['CNTD'] = true;
+		if (requestOwnership && !asyncArbiter.owner) asyncArbiter.owner = caller;
+		if (asyncArbiter.owner == caller) {
+			// Check for completion of individual async threads
+			if (!(asyncArbiter.done.CNTD && asyncArbiter.done.Consultant && asyncArbiter.done.Garant)) {
+				Z.debug('Owner\'s queue... Caller: ' + caller);
+				translate.incrementAsyncProcesses('CNTDCG#arbitrateZItem');
+				setTimeout(arbitrateZItem, asyncArbiter.waitInc, doc, url, caller);
+			}
+			else { // All perquisite threads completed
+				populateMetadata(doc, url);
+			}
+		}
+		else {
+			if (!(asyncArbiter.itemComplete)) {
+				Z.debug('No pass-through queue... Caller: ' + caller);
+				setTimeout(arbitrateZItem, asyncArbiter.waitInc, doc, url, caller);
+			}
 		}
 	}
 }
 
 
 /**
-	Checks whether full text pdf is available. If available, sends a POST request,
-	and waits for the "ready" status. Then calls routine constructing Zotero item.
-	In case of a time out or no pdf, "Zotero item" routine is called.
-*/
+ * +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ * ------------------------------- STAGE 2 BRANCH ------------------------------
+ * -------------------------- Processes: Target / CNTD -------------------------
+ * +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ */
+ 
+/**
+ * Checks whether full text pdf is available. If available, sends a POST request,
+ * and waits for the "ready" status. Then calls routine constructing Zotero item.
+ * In case of a time out or no pdf, "Zotero item" routine is called.
+ */
 function asyncCNTD(doc, url, requestOwnership = false) {
-	Z.debug('Entered asyncCNTD(doc, url)');
+	Z.debug('Entered asyncCNTD(doc, url, requestOwnership)');
 	// Z.debug(metadata);
 	waitStep = 4000;
 	waitCount = 40;
@@ -372,7 +418,28 @@ function asyncCNTD(doc, url, requestOwnership = false) {
 }
 
 
-// Constructs Zotero item and populates it
+/**
+ * +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ * ------------------------------- STAGE 2 BRANCH ------------------------------
+ * ----------------------- Processes: Supplement / Garant ----------------------
+ * +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ */
+ 
+function asyncGarant(requestOwnership) {
+	Z.debug('Entered asyncGarant(requestOwnership)');
+	arbitrateZItem({}, '', 'Garant', requestOwnership);	
+}
+
+
+/**
+ * =============================================================================
+ * ---------------------------------- STAGE 3 ----------------------------------
+ * ------------------------------ CRITICAL SEQTION -----------------------------
+ * The last routine executed by this translator. Constructs Zotero item and
+ * populates it. Asynchronous arbiter ensures that all GET/POST requests are
+ * completed before entering this function. 
+ * =============================================================================
+ */
 function populateMetadata(doc, url) {
 	let extra = [];
 	let zItem = new Zotero.Item(metadata.itemType);
@@ -445,6 +512,13 @@ function populateMetadata(doc, url) {
 	// Z.debug(asyncArbiter);
 }
 
+
+/**
+ * =============================================================================
+ * ---------------------------------- STAGE 1 ----------------------------------
+ * Synchronous routines parsing and processing metadata for the target URL.
+ * =============================================================================
+ */
 
 /**
  *	Parses record table with document metadata into global metadata object
@@ -563,10 +637,10 @@ function adjustMetadata(doc) {
 	let subT = docTypes[subType];
 
 	/**
-		Document ID, title, type, and authority may have multiple values separated
-		by several new lines. Replace separator with " ## ".
-		There are issues with missing "\n" (innerText) in place of <br> (innerHTML)
-		possibly due to the "doc" format passed by the tester, hence the extra code.
+	*	Document ID, title, type, and authority may have multiple values separated
+	*	by several new lines. Replace separator with " ## ".
+	*	There are issues with missing "\n" (innerText) in place of <br> (innerHTML)
+	*	possibly due to the "doc" format passed by the tester, hence the extra code.
 	*/
 	metadata.title = metahtml.title.replace(/<br>/g, '\n').trim().replace(/[\n]+/g, ' ## ');
 	if (metadata.publicDocNumber) {
@@ -576,9 +650,9 @@ function adjustMetadata(doc) {
 	if (metadata.authority) metadata.authority = metadata.authority.replace(/[\t\n]+/g, ' ## ');
 
 	/*
-		Remove document type and number prefix from title
-		This general processing must go before the next block, in which additional
-		type-specific processing may be performed.
+	*	Remove document type and number prefix from title
+	*	This general processing must go before the next block, in which additional
+	*	type-specific processing may be performed.
 	*/
 	let prefixPatterns = [];
 	prefixPatterns.push(subType + ' ' + metadata.publicDocNumber + ' ');
@@ -791,6 +865,7 @@ function adjustMetadata(doc) {
 	query.push(srcJSON[fieldMapRev.title]);
 	metadata.queries.title = query.join(' ');
 	// Z.debug(metadata.queries);
+	
 }
 
 
