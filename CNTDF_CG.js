@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-21 23:46:45"
+	"lastUpdated": "2020-04-22 06:11:39"
 }
 
 /**
@@ -790,7 +790,7 @@ function adjustMetadata(doc) {
 	metadata.queries.notitle = query.join(' ');
 	query.push(srcJSON[fieldMapRev.title]);
 	metadata.queries.title = query.join(' ');
-	Z.debug(metadata.queries);
+	// Z.debug(metadata.queries);
 }
 
 
