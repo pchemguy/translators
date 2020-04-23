@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-22 13:53:47"
+	"lastUpdated": "2020-04-23 04:49:04"
 }
 
 /**
@@ -285,29 +285,27 @@ function getSearchResult(doc, _url) {
 // Starts Stage 2 branches - threads processing the target and supplementary URLs
 function dispatch(doc, url) {
 	Z.debug('Entered dispatch(doc, url)');
-	initArbitrateZItem();
 	// Z.debug(asyncArbiter);
-	let requestOwnership = true;
-	asyncCNTD(doc, url, requestOwnership);
-	requestOwnership = false;
-	asyncGarant(requestOwnership);
+	initSyncBranches();
+	asyncCNTD(doc, url);
+	populateMetadata(doc, url);
+//	syncBranches(doc, url);
 }
 
 
 // Initializes asynchronous arbiter
-function initArbitrateZItem() {
+function initSyncBranches() {
 	asyncArbiter = {
 		done: { CNTD: false, Garant: false, Consultant: false }, // Set to TRUE by the async arbiter
 		waitMaxCount: { CNTD: 10, Garant: 5, Consultant: 5 }, 
 		waitInc: 1000,
 		itemComplete: false,
-		owner: 'CNTD'			// If this is set, later request by individual threads are ignored
 	};
 }
 
 
 // Asynchronous arbiter (called by individual Stage 2 branches at their exit)
-function arbitrateZItem(doc, url, caller, requestOwnership = false) {
+function syncBranches(doc, url) {
 	Z.debug('Waiting for completion of asynchronous steps... Caller: ' + caller);
 	Z.debug(asyncArbiter);
 	// Z.debug(arguments);
@@ -331,7 +329,7 @@ function arbitrateZItem(doc, url, caller, requestOwnership = false) {
 			if (!(asyncArbiter.done.CNTD && asyncArbiter.done.Consultant && asyncArbiter.done.Garant)) {
 				Z.debug('Owner\'s queue... Caller: ' + caller);
 				translate.incrementAsyncProcesses('CNTDCG#arbitrateZItem');
-				setTimeout(arbitrateZItem, asyncArbiter.waitInc, doc, url, caller);
+				setTimeout(syncBranches, asyncArbiter.waitInc, doc, url);
 			}
 			else { // All perquisite threads completed
 				populateMetadata(doc, url);
@@ -359,11 +357,12 @@ function arbitrateZItem(doc, url, caller, requestOwnership = false) {
  * and waits for the "ready" status. Then calls routine constructing Zotero item.
  * In case of a time out or no pdf, "Zotero item" routine is called.
  */
-function asyncCNTD(doc, url, requestOwnership = false) {
-	Z.debug('Entered asyncCNTD(doc, url, requestOwnership)');
+function asyncCNTD(doc, url) {
+	Z.debug('Entered asyncCNTD(doc, url)');
 	// Z.debug(metadata);
 	waitStep = 4000;
 	waitCount = 40;
+
 
 	if (metadata.pdfKey) {
 		// Z.debug('Requesting pdf id: ' + metadata.CNTDID + ' key: ' + metadata.pdfKey)
@@ -373,47 +372,53 @@ function asyncCNTD(doc, url, requestOwnership = false) {
 		ZU.doPost(postUrl, postData, waitforPDF);
 	}
 	else {
-		arbitrateZItem(doc, url, 'CNTD', requestOwnership);
+		asyncArbiter.done.CNTD = true;  // Full text N/A (not provided)
+		return;
 	}
-
-	// Waits for the PDF "ready" status by pinging the server using GET requests
-	function waitforPDF(responseText, _xmlhttp) {
-		if (responseText) {
-			Z.debug('PDF request response: ' + responseText);
-			if (responseText.includes('ready')) {
-				let getURL = 'http://docs.cntd.ru/pdf/get/?id='
-					+ metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
-				ZU.doGet(getURL, checkforPDF);
+	
+	/**
+	* Waits for the PDF "ready" status by pinging the server using GET requests.
+	* Checks server response. If PDF is not ready and the maximum retry count is
+	* not reached, keep waiting. Otherwise, set completion flag and return.
+	*
+	* This routine processes callback from asyncCNTD => ZU.doPost first. doPost
+	* callback is called with two arguments, so if the third argument is not defined,
+	* process callback from doPost and setup recursive doGet loop. doGet callback
+	* supplies three arguments, permitting differentiation.
+	*/
+	function waitforPDF(responseText, xmlhttp, requestURL) {
+		let status = responseText.match(/{"status":"([a-z]+)/);
+		if (status) status = pdfStatus[status[1]];
+		if (!status) {
+			asyncArbiter.done.CNTD = true; // Full text N/A (bad response)
+			return;
+		}
+		if (!requestURL) {
+			Z.debug('PDF request (POST) response: ' + responseText);
+			if (status != 1) {
+				asyncArbiter.done.CNTD = true; // Full text N/A (bad response)
+				return;
 			}
-			else arbitrateZItem(doc, url, 'CNTD', requestOwnership);
 		}
-		else arbitrateZItem(doc, url, 'CNTD', requestOwnership);
-	}
-
-	// Checks server response. If PDF is not ready and the maximum retry count is
-	// not reached, keep waiting. Otherwise, call metadata routine.
-	function checkforPDF(responseText, _xmlhttp, _requestURL) {
-		Z.debug('Waiting for pdf ready status: ' + responseText);
-		let status = pdfStatus[responseText.match(/{"status":"([a-z]+)/)[1]];
-
-		switch (status) {
-			case -1:
-				waitCount--;
-				if (waitCount <= 0) {
-					Z.debug('PDF request time out...');
-					arbitrateZItem(doc, url, 'CNTD', requestOwnership);
-				}
-				else {
-					setTimeout(waitforPDF, waitStep, '', {});
-				}
-				break;
-			case 1:
+		else {
+			Z.debug('PDF request (GET)  response: ' + responseText);
+			if (status == 1) {
 				metadata.pdfAvailable = true;
-				arbitrateZItem(doc, url, 'CNTD', requestOwnership);
-				break;
-			default:
-				arbitrateZItem(doc, url, 'CNTD', requestOwnership);
+				asyncArbiter.done.CNTD = true; // Full text ready
+				return;
+			}
 		}
+		waitCount--;
+		if (waitCount <= 0) {
+			Z.debug('PDF request timed out...');
+			asyncArbiter.done.CNTD = true; // Full text N/A (request time out)
+			return;
+		}
+
+		// Wait and then resend a GET request
+		let getURL = 'http://docs.cntd.ru/pdf/get/?id=' + metadata.CNTDID
+			+ '&key=' + metadata.pdfKey + '&hdaccess=false';
+		setTimeout(ZU.doGet, waitStep, getURL, waitforPDF);
 	}
 }
 
@@ -425,16 +430,13 @@ function asyncCNTD(doc, url, requestOwnership = false) {
  * +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  */
  
-function asyncGarant(requestOwnership) {
-	Z.debug('Entered asyncGarant(requestOwnership)');
-	arbitrateZItem({}, '', 'Garant', requestOwnership);	
+function asyncGarant() {
 }
 
 
 /**
  * =============================================================================
  * ---------------------------------- STAGE 3 ----------------------------------
- * ------------------------------ CRITICAL SEQTION -----------------------------
  * The last routine executed by this translator. Constructs Zotero item and
  * populates it. Asynchronous arbiter ensures that all GET/POST requests are
  * completed before entering this function. 
