@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-24 20:38:39"
+	"lastUpdated": "2020-04-24 23:28:00"
 }
 
 /**
@@ -231,14 +231,15 @@ function dispatch(doc, url) {
 		Garant: true,
 		Consultant: true
 	};
-
+	populateItemCore(doc, url);
+	
 	supplementaryCNTD(doc, url);
 }
 
 
 function gateKeeper(doc, url) {
 	if (branchesCompleted.CNTD && branchesCompleted.Garant && branchesCompleted.Consultant) {
-		scrapeMetadata(doc, url);
+		populateAttachments(doc, url);
 	}
 }
 
@@ -249,9 +250,9 @@ function gateKeeper(doc, url) {
  * In case of a time out or no pdf, "Zotero item" routine is called.
  */
 function supplementaryCNTD(doc, url) {
-	waitStep = 2000;
+	waitStep = 3000;
 	waitCount = 40;
-	
+
 	if (metadata.pdfKey) {
 		// Z.debug('Requesting pdf id: ' + metadata.CNTDID + ' key: ' + metadata.pdfKey)
 		Z.debug('Requesting pdf id: ' + metadata.CNTDID);
@@ -269,16 +270,18 @@ function supplementaryCNTD(doc, url) {
 	
 	// Waits for the PDF "ready" status by pinging the server using GET requests
 	function waitforPDF(responseText, xmlhttp) {
-		Z.debug('PDF request POST response: ' + responseText);
-		let status = responseText.match(/{"status":"([a-z]+)/);
-		if (status) status = pdfStatus[status[1]];
-		if (status != 1) {
-			// Full text N/A (bad response)
-			Z.debug('PDF is not available - bad response...');
-			branchesCompleted.CNTD = true;
-			gateKeeper(doc, url);
-			//scrapeMetadata(doc, url);
-			return;
+		if (responseText) {
+			Z.debug('PDF request (POST) response: ' + responseText);
+			let status = responseText.match(/{"status":"([a-z]+)/);
+			if (status) status = pdfStatus[status[1]];
+			if (!status) {
+				// Full text N/A (bad response)
+				Z.debug('PDF is not available - bad response... (waitforPDF)');
+				branchesCompleted.CNTD = true;
+				gateKeeper(doc, url);
+				//scrapeMetadata(doc, url);
+				return;
+			}
 		}
 
 		let getURL = 'http://docs.cntd.ru/pdf/get/?id='
@@ -326,9 +329,10 @@ function supplementaryCNTD(doc, url) {
 
 
 // Constructs Zotero item and populates it
-function scrapeMetadata(doc, url) {
+function populateItemCore(doc, url) {
 	let extra = [];
 	let zItem = new Zotero.Item(metadata.itemType);
+	metadata.zItem = zItem;
 	// creator: {fieldMode: 1, firstName: "", lastName: "", creatorType: "author"};
 	let authorities = metadata.authority.split(' ## ');
 	for (let authority of authorities) {
@@ -384,7 +388,11 @@ function scrapeMetadata(doc, url) {
 	if (metadata.notes) {
 		metadata.notes.forEach(note => zItem.notes.push(note));
 	}
+}
 
+
+function populateAttachments(doc, url) {
+	let zItem = metadata.zItem;
 	if (metadata.pdfAvailable) {
 		zItem.attachments.push({
 			title: "Full Text PDF",
