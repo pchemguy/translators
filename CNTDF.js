@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-24 14:48:57"
+	"lastUpdated": "2020-04-24 20:38:39"
 }
 
 /**
@@ -64,6 +64,9 @@ const pdfStatus = {
 	inprocess: -1,
 	ready: 1,
 };
+
+// Tracks completion of independent GET/POST requests 
+let branchesCompleted;
 
 // Holds extracted metadata
 let metadata;
@@ -208,7 +211,7 @@ function doWeb(doc, url) {
 		}
 	} else {
 		adjustMetadata(doc);
-		supplementaryCNTD(doc, url);
+		dispatch(doc, url);
 	}
 }
 
@@ -221,15 +224,34 @@ function getSearchResult(doc, _url) {
 }
 
 
+// Dispatches independent asynchronous requests
+function dispatch(doc, url) {
+	branchesCompleted = {
+		CNTD: false,
+		Garant: true,
+		Consultant: true
+	};
+
+	supplementaryCNTD(doc, url);
+}
+
+
+function gateKeeper(doc, url) {
+	if (branchesCompleted.CNTD && branchesCompleted.Garant && branchesCompleted.Consultant) {
+		scrapeMetadata(doc, url);
+	}
+}
+
+
 /**
-	Checks whether full text pdf is available. If available, sends a POST request,
-	and waits for the "ready" status. Then calls routine constructing Zotero item.
-	In case of a time out or no pdf, "Zotero item" routine is called.
-*/
+ * Checks whether full text pdf is available. If available, sends a POST request,
+ * and waits for the "ready" status. Then calls routine constructing Zotero item.
+ * In case of a time out or no pdf, "Zotero item" routine is called.
+ */
 function supplementaryCNTD(doc, url) {
 	waitStep = 2000;
 	waitCount = 40;
-
+	
 	if (metadata.pdfKey) {
 		// Z.debug('Requesting pdf id: ' + metadata.CNTDID + ' key: ' + metadata.pdfKey)
 		Z.debug('Requesting pdf id: ' + metadata.CNTDID);
@@ -237,12 +259,28 @@ function supplementaryCNTD(doc, url) {
 		let postData = 'id=' + metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
 		ZU.doPost(postUrl, postData, waitforPDF);
 	} else {
-		scrapeMetadata(doc, url);
+		// Full text N/A (not provided)
+		Z.debug('PDF is not provided...');
+		branchesCompleted.CNTD = true;
+		gateKeeper(doc, url);
+		//scrapeMetadata(doc, url);
+		return;
 	}
-
+	
 	// Waits for the PDF "ready" status by pinging the server using GET requests
-	function waitforPDF(responseText, _xmlhttp) {
-		if (_xmlhttp) Z.debug('PDF request response: ' + responseText);
+	function waitforPDF(responseText, xmlhttp) {
+		Z.debug('PDF request POST response: ' + responseText);
+		let status = responseText.match(/{"status":"([a-z]+)/);
+		if (status) status = pdfStatus[status[1]];
+		if (status != 1) {
+			// Full text N/A (bad response)
+			Z.debug('PDF is not available - bad response...');
+			branchesCompleted.CNTD = true;
+			gateKeeper(doc, url);
+			//scrapeMetadata(doc, url);
+			return;
+		}
+
 		let getURL = 'http://docs.cntd.ru/pdf/get/?id='
 			+ metadata.CNTDID + '&key=' + metadata.pdfKey + '&hdaccess=false';
 		ZU.doGet(getURL, checkforPDF);
@@ -250,26 +288,38 @@ function supplementaryCNTD(doc, url) {
 
 	// Checks server response. If PDF is not ready and the maximum retry count is
 	// not reached, keep waiting. Otherwise, call metadata routine.
-	function checkforPDF(responseText, _xmlhttp, _requestURL) {
-		Z.debug('Waiting for pdf ready status: ' + responseText);
-		let status = pdfStatus[responseText.match(/{"status":"([a-z]+)/)[1]];
+	function checkforPDF(responseText, xmlhttp, requestURL) {
+		let status = responseText.match(/{"status":"([a-z]+)/);
+		if (status) status = pdfStatus[status[1]];
 
 		switch (status) {
 			case -1:
 				waitCount--;
 				if (waitCount <= 0) {
-					Z.debug('PDF request time out...');
-					scrapeMetadata(doc, url);
+					// Full text N/A (request time out)
+					Z.debug('PDF request timed out...');
+					branchesCompleted.CNTD = true;
+					gateKeeper(doc, url);
+					//scrapeMetadata(doc, url);
 				} else {
+					Z.debug('Waiting for pdf ready status: ' + responseText);
 					ZU.setTimeout(waitforPDF, waitStep, '', {});
 				}
 				break;
 			case 1:
+				// Full text ready
+				Z.debug('PDF is ready. Response :' + responseText);
 				metadata.pdfAvailable = true;
-				scrapeMetadata(doc, url);
+				branchesCompleted.CNTD = true;
+				gateKeeper(doc, url);
+				//scrapeMetadata(doc, url);
 				break;
 			default:
-				scrapeMetadata(doc, url);
+				// Full text N/A (bad response)
+				Z.debug('PDF is not available - bad response: ' + responseText);
+				branchesCompleted.CNTD = true;
+				gateKeeper(doc, url);
+				//scrapeMetadata(doc, url);
 		}
 	}
 }
@@ -471,7 +521,7 @@ function adjustMetadata(doc) {
 	}
 	if (metadata.authority) metadata.authority = metadata.authority.replace(/[\t\n]+/g, ' ## ');
 
-	/*
+	/**
 		Remove document type and number prefix from title
 		This general processing must go before the next block, in which additional
 		type-specific processing may be performed.
