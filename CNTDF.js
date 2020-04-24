@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-23 17:16:34"
+	"lastUpdated": "2020-04-24 14:48:57"
 }
 
 /**
@@ -208,7 +208,7 @@ function doWeb(doc, url) {
 		}
 	} else {
 		adjustMetadata(doc);
-		scrape(doc, url);
+		supplementaryCNTD(doc, url);
 	}
 }
 
@@ -226,7 +226,7 @@ function getSearchResult(doc, _url) {
 	and waits for the "ready" status. Then calls routine constructing Zotero item.
 	In case of a time out or no pdf, "Zotero item" routine is called.
 */
-function scrape(doc, url) {
+function supplementaryCNTD(doc, url) {
 	waitStep = 2000;
 	waitCount = 40;
 
@@ -251,7 +251,7 @@ function scrape(doc, url) {
 	// Checks server response. If PDF is not ready and the maximum retry count is
 	// not reached, keep waiting. Otherwise, call metadata routine.
 	function checkforPDF(responseText, _xmlhttp, _requestURL) {
-		Z.debug('Waiting for pdf ready status: ' + responseText + ' ' + waitStep);
+		Z.debug('Waiting for pdf ready status: ' + responseText);
 		let status = pdfStatus[responseText.match(/{"status":"([a-z]+)/)[1]];
 
 		switch (status) {
