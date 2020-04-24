@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-24 23:28:00"
+	"lastUpdated": "2020-04-24 23:34:58"
 }
 
 /**
@@ -231,15 +231,14 @@ function dispatch(doc, url) {
 		Garant: true,
 		Consultant: true
 	};
-	populateItemCore(doc, url);
-	
+
 	supplementaryCNTD(doc, url);
 }
 
 
 function gateKeeper(doc, url) {
 	if (branchesCompleted.CNTD && branchesCompleted.Garant && branchesCompleted.Consultant) {
-		populateAttachments(doc, url);
+		populateItem(doc, url);
 	}
 }
 
@@ -329,7 +328,7 @@ function supplementaryCNTD(doc, url) {
 
 
 // Constructs Zotero item and populates it
-function populateItemCore(doc, url) {
+function populateItem(doc, url) {
 	let extra = [];
 	let zItem = new Zotero.Item(metadata.itemType);
 	metadata.zItem = zItem;
@@ -384,15 +383,10 @@ function populateItemCore(doc, url) {
 	if (metadata.legalStatus && metadata.legalStatus != keywords.activeLaw) zItem.tags.push('Inactive');
 	if (metadata.dateRevoked) zItem.tags.push('Revoked');
 
-
 	if (metadata.notes) {
 		metadata.notes.forEach(note => zItem.notes.push(note));
 	}
-}
 
-
-function populateAttachments(doc, url) {
-	let zItem = metadata.zItem;
 	if (metadata.pdfAvailable) {
 		zItem.attachments.push({
 			title: "Full Text PDF",
