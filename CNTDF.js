@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-24 23:34:58"
+	"lastUpdated": "2020-04-24 23:39:02"
 }
 
 /**
@@ -228,11 +228,12 @@ function getSearchResult(doc, _url) {
 function dispatch(doc, url) {
 	branchesCompleted = {
 		CNTD: false,
-		Garant: true,
+		Garant: false,
 		Consultant: true
 	};
 
-	supplementaryCNTD(doc, url);
+	CNTD(doc, url);
+	Garant(doc, url);
 }
 
 
@@ -248,7 +249,7 @@ function gateKeeper(doc, url) {
  * and waits for the "ready" status. Then calls routine constructing Zotero item.
  * In case of a time out or no pdf, "Zotero item" routine is called.
  */
-function supplementaryCNTD(doc, url) {
+function CNTD(doc, url) {
 	waitStep = 3000;
 	waitCount = 40;
 
@@ -324,6 +325,12 @@ function supplementaryCNTD(doc, url) {
 				//scrapeMetadata(doc, url);
 		}
 	}
+}
+
+
+function Garant(doc, url) {
+	branchesCompleted.Garant = true;
+	gateKeeper(doc, url);
 }
 
 
