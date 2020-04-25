@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-24 23:56:29"
+	"lastUpdated": "2020-04-25 00:08:05"
 }
 
 /**
@@ -86,6 +86,11 @@ const filters = {
 	pdfKeyScriptCSS: "div#page-wrapper > script:nth-child(2)",
 	searchResultCSS: "div#tab-content-search > div.content > ul > li > a"
 };
+
+const garant = {
+	searchGetUrlPrefix = 'http://ivo.garant.ru/#/basesearch/',
+	searchGetItemCSS = 'div.wrapper > div.wrapperInner > ul > li > a'
+}
 
 const keywords = {
 	activeLaw: "Действующий",
