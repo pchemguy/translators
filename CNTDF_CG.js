@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsbv",
-	"lastUpdated": "2020-04-25 00:08:05"
+	"lastUpdated": "2020-04-25 17:38:45"
 }
 
 /**
@@ -88,15 +88,17 @@ const filters = {
 };
 
 const garant = {
-	searchGetUrlPrefix = 'http://ivo.garant.ru/#/basesearch/',
-	searchGetItemCSS = 'div.wrapper > div.wrapperInner > ul > li > a'
-}
+	searchGetUrlPrefix: "http://ivo.garant.ru/#/basesearch/",
+	searchGetItemCSS: "div.wrapper > div.wrapperInner > ul > li > a"
+};
 
 const keywords = {
 	activeLaw: "Действующий",
 	codeAmendments: "(с изменениями на",
 	codeVersion: "(редакция"
 };
+
+const cleanTitle = ["(с изменениями", "(утратил"];
 
 let waitStep;
 let waitCount;
@@ -251,9 +253,52 @@ function doWeb(doc, url) {
 			);
 		}
 	} else {
+		test();
+		return;
 		adjustMetadata(doc);
 		dispatch(doc, url);
 	}
+}
+
+	
+function test() {
+	let request = new XMLHttpRequest();
+	let url='http://ivo.garant.ru/#/basesearch/%D0%A3%D0%BA%D0%B0%D0%B7%20%D0%9F%D1%80%D0%B5%D0%B7%D0%B8%D0%B4%D0%B5%D0%BD%D1%82%D0%B0%20%D0%A0%D0%A4%20%D0%BE%D1%82%2026%20%D0%B0%D0%BF%D1%80%D0%B5%D0%BB%D1%8F%202005%20N%20473%20%D0%9E%20%D0%B2%D0%BD%D0%B5%D1%81%D0%B5%D0%BD%D0%B8%D0%B8%20%D0%B8%D0%B7%D0%BC%D0%B5%D0%BD%D0%B5%D0%BD%D0%B8%D0%B9%20%D0%B2%20%D0%A3%D0%BA%D0%B0%D0%B7%20%D0%9F%D1%80%D0%B5%D0%B7%D0%B8%D0%B4%D0%B5%D0%BD%D1%82%D0%B0%20%D0%A0%D0%BE%D1%81%D1%81%D0%B8%D0%B9%D1%81%D0%BA%D0%BE%D0%B9%20%D0%A4%D0%B5%D0%B4%D0%B5%D1%80%D0%B0%D1%86%D0%B8%D0%B8%20%D0%BE%D1%82%2016%20%D0%B8%D1%8E%D0%BB%D1%8F%202004%20%D0%B3%D0%BE%D0%B4%D0%B0%20N%20910%20%22%D0%9E%20%D0%BC%D0%B5%D1%80%D0%B0%D1%85%20%D0%BF%D0%BE%20%D1%81%D0%BE%D0%B2%D0%B5%D1%80%D1%88%D0%B5%D0%BD%D1%81%D1%82%D0%B2%D0%BE%D0%B2%D0%B0%D0%BD%D0%B8%D1%8E%20%D0%B3%D0%BE%D1%81%D1%83%D0%B4%D0%B0%D1%80%D1%81%D1%82%D0%B2%D0%B5%D0%BD%D0%BD%D0%BE%D0%B3%D0%BE%20%D1%83%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D1%8F%22';
+	request.open("GET", url);
+	request.send();
+
+	const Http = new XMLHttpRequest();
+	Http.open("GET", url);
+	Http.withCredentials = true;
+	Http.setRequestHeader('User-Agen', 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.131 Safari/537.36');
+	Http.send();
+	
+	Http.onreadystatechange = (e) => {
+		Z.debug(request.responseText);
+		var headers = request.getResponseHeader('Set-Cookie');
+		Z.debug(headers);
+	}
+
+	request.onreadystatechange = (e) => function() {
+		Z.debug(request.responseText);
+		// Get the raw header string
+		var headers = request.getAllResponseHeaders();
+
+		// Convert the header string into an array
+		// of individual headers
+		var arr = headers.trim().split(/[\r\n]+/);
+
+		// Create a map of header names to values
+		var headerMap = {};
+		arr.forEach(function (line) {
+			var parts = line.split(': ');
+			var header = parts.shift();
+			var value = parts.join(': ');
+			headerMap[header] = value;
+		});
+		
+		Z.debug(headerMap);
+	}	
 }
 
 
@@ -370,8 +415,15 @@ function CNTD(doc, url) {
 
 
 function Garant(doc, url) {
-	branchesCompleted.Garant = true;
-	gateKeeper(doc, url);
+	let urlSearchGarant = ZU.cleanURL(garant.searchGetUrlPrefix + metadata.queries.title);
+	Z.debug(Reflect.ownKeys(ZU));
+	ZU.doGet([urlSearchGarant], processSearchResult);
+	
+	function processSearchResult(responseText, xmlhttp, requestURL) {
+		Z.debug(responseText);
+		branchesCompleted.Garant = true;
+		gateKeeper(doc, url);
+	}
 }
 
 
@@ -773,6 +825,7 @@ function adjustMetadata(doc) {
 	if (metadata.dateRevoked) metadata.dateRevoked = parseDate(metadata.dateRevoked);
 	if (!metadata.dateEnacted) metadata.dateEnacted = metadata.dateApproved;
 
+	// Construct search queries
 	metadata.queries = {};
 	let query = [];
 	let srcJSON = JSON.parse(metadata.notes[0].replace(/\n/g, '|'));
@@ -781,7 +834,12 @@ function adjustMetadata(doc) {
 	if (dateApproved) query.push('от ' + dateApproved);
 	query.push('N ' + srcJSON[fieldMapRev.publicDocNumber]);
 	metadata.queries.notitle = query.join(' ');
-	query.push(srcJSON[fieldMapRev.title]);
+	title = srcJSON[fieldMapRev.title];
+	for (let pattern of cleanTitle) {
+		let match = title.indexOf(pattern);
+		if (match != -1) title = title.slice(0, match).trim();
+	}
+	query.push(title);
 	metadata.queries.title = query.join(' ');
 }
 
